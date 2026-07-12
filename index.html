@@ -99,6 +99,10 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .spin div{font-size:11px;letter-spacing:.3em;color:var(--cyan);animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:.25}}
 
+.readonly .loadbar,.readonly .del{display:none!important}
+.readonly .card .note.empty{display:none}
+.readonly .card .note{cursor:default}
+
 @media(max-width:720px){
   header{flex-wrap:wrap;gap:8px;padding:10px 12px}
   input[type=url]{flex:1 1 100%}
@@ -121,12 +125,13 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.11]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.13]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
     <button class="btn" id="urlBtn">URL読込</button>
     <button class="btn mg" id="fileBtn">ファイル選択</button>
+    <button class="btn" id="expBtn" title="公開用コレクションを書き出す">書き出し</button>
     <input type="file" id="fileIn" accept=".glb,.spz,.ply,.splat,.ksplat,.sog" multiple hidden>
   </div>
 </header>
@@ -141,6 +146,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
   <button class="tg on" id="tgGlitch">GLITCH</button>
   <button class="tg on" id="tgGrid">GRID</button>
   <button class="tg" id="tgFlip">FLIP</button>
+  <button class="tg" id="tgAR" style="color:var(--magenta);border-color:var(--magenta)">AR</button>
 </div>
 
 <div class="hud" id="hud">
@@ -169,6 +175,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+
+/* ===== 設定 =====
+   一般公開時は下を true に変更(全ての編集機能がオフになり閲覧専用になります) */
+const READ_ONLY = false;
+if(READ_ONLY) document.documentElement.classList.add('readonly');
 
 /* ================= renderer / scene ================= */
 const canvas = document.getElementById('gl');
@@ -314,7 +325,7 @@ function addEntry(name, obj, source, info, opts){
   const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
   const e={id:opts.id||null, acc, name, obj, info, maxDim:info.maxDim,
     date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind,
-    note:opts.note||''};
+    note:opts.note||'', url:opts.url||null, readonly:!!opts.readonly};
   entries.push(e);
 
   const card=document.createElement('div');
@@ -324,7 +335,7 @@ function addEntry(name, obj, source, info, opts){
     <div class="nm">${esc(name)}</div>
     <div class="meta"><span>${esc(info.statLabel)}</span><span>${e.date}</span></div>
     <div class="note"></div>
-    <button class="del" title="削除">×</button>`;
+    ${e.readonly?'':'<button class="del" title="削除">×</button>'}`;
   const noteEl=card.querySelector('.note');
   function renderNote(){
     noteEl.textContent=e.note||'+ メモを追加(素材・年代・出典など)';
@@ -333,6 +344,7 @@ function addEntry(name, obj, source, info, opts){
   renderNote();
   noteEl.addEventListener('click',ev=>{
     ev.stopPropagation();
+    if(READ_ONLY || e.readonly) return;
     if(noteEl.querySelector('textarea')) return;
     const ta=document.createElement('textarea');
     ta.value=e.note;
@@ -483,7 +495,8 @@ async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
       built=await buildSplat(target);
     }
     const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
-    addEntry(name, built.obj, source, built.info, restoreOpts||{id});
+    const opts=Object.assign({id}, restoreOpts||{}, {url:url||null, readonly:!!arguments[0].readonly});
+    addEntry(name, built.obj, source, built.info, opts);
     if(persist && store){
       const e=entries[entries.length-1];
       const meta={name, source, date:e.date, acc:e.acc, ext, kind};
@@ -508,8 +521,9 @@ async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
   }
 }
 
-document.getElementById('fileBtn').onclick=()=>document.getElementById('fileIn').click();
+document.getElementById('fileBtn').onclick=()=>{if(!READ_ONLY)document.getElementById('fileIn').click();};
 document.getElementById('fileIn').addEventListener('change', async e=>{
+  if(READ_ONLY) return;
   for(const f of [...e.target.files]){
     await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
       source:'LOCAL', ext:extOf(f.name), persist:true});
@@ -518,10 +532,11 @@ document.getElementById('fileIn').addEventListener('change', async e=>{
 });
 
 const drop=document.getElementById('drop');
-addEventListener('dragover', e=>{e.preventDefault(); drop.classList.add('show');});
+addEventListener('dragover', e=>{e.preventDefault(); if(!READ_ONLY)drop.classList.add('show');});
 drop.addEventListener('dragleave', ()=>drop.classList.remove('show'));
 addEventListener('drop', async e=>{
   e.preventDefault(); drop.classList.remove('show');
+  if(READ_ONLY) return;
   for(const f of [...e.dataTransfer.files]){
     const ext=extOf(f.name);
     if(ext!=='glb' && !SPLAT_EXTS.includes(ext)) continue;
@@ -531,10 +546,28 @@ addEventListener('drop', async e=>{
 });
 
 document.getElementById('urlBtn').onclick=async()=>{
+  if(READ_ONLY) return;
   const u=document.getElementById('urlIn').value.trim();
   if(!u) return;
   const name=decodeURIComponent(u.split('/').pop().replace(/\.[a-z0-9]+(\?.*)?$/i,''))||'untitled';
   await loadAny({url:u, name, source:'URL', ext:extOf(u), persist:true});
+};
+
+/* 公開用コレクションの書き出し */
+document.getElementById('expBtn').onclick=()=>{
+  const pub=entries.filter(e=>e.url).map(e=>({
+    name:e.name, url:e.url, acc:e.acc, note:e.note||'', date:e.date
+  }));
+  if(!pub.length){say('URL読込した収蔵品がありません(ローカル読込のみは書き出せません)', true); return;}
+  const blob=new Blob([JSON.stringify(pub,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='collection.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  const skipped=entries.filter(e=>!e.url && e.source!=='DEMO').length;
+  say('collection.json を保存しました('+pub.length+'点)。リポジトリにアップすると公開コレクションになります'
+    +(skipped?'。ローカル読込の'+skipped+'点はURLがないため対象外':''));
 };
 
 /* ================= toggles / glitch ================= */
@@ -552,6 +585,41 @@ document.getElementById('tgFlip').onclick=()=>{
   const s=current.obj.userData.splat;
   if(s){s.rotation.x = s.rotation.x===0 ? Math.PI : 0;}
   else current.obj.rotation.x = current.obj.rotation.x===0 ? Math.PI : 0;
+};
+
+document.getElementById('tgAR').onclick=async()=>{
+  if(!current) return;
+  if(current.kind!=='glb'){say('ARはGLB(メッシュ)のみ対応です。3DGSはAR表示できません', true); return;}
+  const ua=navigator.userAgent;
+  const isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const isAndroid=/Android/.test(ua);
+  if(isIOS){
+    say('AR用データに変換中…');
+    try{
+      const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
+      const exporter=new USDZExporter();
+      const data=await exporter.parseAsync(current.obj);
+      const blob=new Blob([data],{type:'model/vnd.usdz+zip'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.rel='ar'; a.href=url;
+      a.appendChild(document.createElement('img'));
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{a.remove(); URL.revokeObjectURL(url);}, 60000);
+    }catch(err){
+      say('AR変換失敗: '+(err&&err.message?err.message:err), true);
+    }
+  } else if(isAndroid){
+    if(!current.url){say('AndroidのARはURL収蔵したGLBのみ対応です', true); return;}
+    const glb=encodeURIComponent(current.url);
+    location.href='intent://arvr.google.com/scene-viewer/1.0?file='+glb
+      +'&mode=ar_preferred#Intent;scheme=https;package=com.google.android.googlequicksearchbox;'
+      +'action=android.intent.action.VIEW;S.browser_fallback_url='
+      +encodeURIComponent(location.href)+';end;';
+  } else {
+    say('ARはスマホ(iPhone/Android)でこのサイトを開いたときに使えます');
+  }
 };
 
 function applyWire(){
@@ -657,26 +725,46 @@ renderer.setAnimationLoop(()=>{
 
 /* ================= init ================= */
 (async function init(){
-  let restored=0;
-  if(store){
+  let shown=0;
+  const pubUrls=new Set();
+  // 公開コレクション(collection.jsonがあれば全訪問者に表示)
+  try{
+    const r=await fetch('collection.json',{cache:'no-store'});
+    if(r.ok){
+      const list=await r.json();
+      for(const item of list){
+        try{
+          await loadAny({url:item.url, name:item.name, source:'COLLECTION',
+            ext:extOf(item.url), persist:false, readonly:true,
+            restoreOpts:{acc:item.acc, date:item.date, note:item.note||''}});
+          pubUrls.add(item.url);
+          shown++;
+        }catch(e){
+          say('コレクション読込失敗: '+item.name, true);
+        }
+      }
+    }
+  }catch(e){}
+  // 個人収蔵(このブラウザのみ)
+  if(!READ_ONLY && store){
     try{
       const saved=await store.all();
       saved.sort((a,b)=>(a.meta.acc||'').localeCompare(b.meta.acc||''));
       for(const s of saved){
+        if(s.meta.url && pubUrls.has(s.meta.url)) continue;
         try{
           const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
           await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
             ext, persist:false,
             restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||''}});
-          restored++;
+          shown++;
         }catch(e){
           say('復元失敗: '+s.meta.name, true);
         }
       }
     }catch(e){}
   }
-  if(restored===0) defaultSpecimen();
-  else say('収蔵品 '+restored+' 点を復元しました');
+  if(shown===0) defaultSpecimen();
 })();
 </script>
 </body>
