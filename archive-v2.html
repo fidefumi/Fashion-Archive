@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>FRAGMENT//ARCHIVE — digital garment specimens</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0b10;
+  --panel:rgba(16,16,24,.82);
+  --line:rgba(232,230,223,.14);
+  --ink:#e8e6df;
+  --dim:#6c6c78;
+  --cyan:#58f6e0;
+  --magenta:#ff3ea5;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --disp:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:12px}
+canvas#gl{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none}
+
+.fx{position:fixed;inset:0;pointer-events:none;z-index:5}
+.fx::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 3px);
+  mix-blend-mode:multiply}
+.fx::after{content:"";position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;
+  padding:14px 18px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(11,11,16,.9),rgba(11,11,16,.55) 80%,transparent)}
+.brand{font-family:var(--disp);font-weight:800;font-size:20px;letter-spacing:.04em;
+  position:relative;white-space:nowrap;user-select:none}
+.brand em{font-style:normal;color:var(--cyan)}
+.brand::before,.brand::after{content:attr(data-t);position:absolute;left:0;top:0;width:100%;overflow:hidden}
+.brand::before{color:var(--magenta);z-index:-1;clip-path:inset(0 0 55% 0);transform:translate(-2px,-1px);opacity:.85}
+.brand::after{color:var(--cyan);z-index:-2;clip-path:inset(55% 0 0 0);transform:translate(2px,1px);opacity:.85}
+.brand.glitching::before{animation:gl1 .32s steps(2) both}
+.brand.glitching::after{animation:gl2 .32s steps(2) both}
+@keyframes gl1{0%{transform:translate(-2px,-1px)}25%{transform:translate(-6px,2px);clip-path:inset(10% 0 40% 0)}60%{transform:translate(3px,-2px);clip-path:inset(40% 0 20% 0)}100%{transform:translate(-2px,-1px)}}
+@keyframes gl2{0%{transform:translate(2px,1px)}30%{transform:translate(6px,-2px);clip-path:inset(60% 0 5% 0)}70%{transform:translate(-4px,2px);clip-path:inset(20% 0 55% 0)}100%{transform:translate(2px,1px)}}
+.brand small{display:block;font-family:var(--mono);font-weight:400;font-size:9px;color:var(--dim);letter-spacing:.22em;margin-top:2px}
+
+.loadbar{display:flex;gap:8px;flex:1;min-width:0;justify-content:flex-end;align-items:center}
+input[type=url]{flex:0 1 340px;min-width:0;background:rgba(0,0,0,.4);border:1px solid var(--line);
+  color:var(--ink);font-family:var(--mono);font-size:11px;padding:8px 10px;outline:none}
+input[type=url]:focus-visible{border-color:var(--cyan)}
+input[type=url]::placeholder{color:var(--dim)}
+.btn{cursor:pointer;border:1px solid var(--line);background:rgba(0,0,0,.4);color:var(--ink);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;padding:8px 14px;white-space:nowrap;
+  transition:border-color .15s,color .15s}
+.btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
+.btn.mg:hover{border-color:var(--magenta);color:var(--magenta)}
+
+aside{position:fixed;top:76px;bottom:16px;left:16px;width:264px;z-index:15;
+  display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:4px;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padding:2px 2px 4px}
+.card{background:var(--panel);border:1px solid var(--line);padding:10px 12px;cursor:pointer;
+  backdrop-filter:blur(6px);transition:border-color .15s;position:relative}
+.card:hover{border-color:rgba(88,246,224,.5)}
+.card.active{border-color:var(--cyan)}
+.card.active::before{content:"VIEWING";position:absolute;top:-1px;right:-1px;
+  background:var(--cyan);color:#000;font-size:8px;letter-spacing:.15em;padding:2px 6px}
+.card .acc{font-size:9px;color:var(--magenta);letter-spacing:.15em}
+.card .nm{font-family:var(--disp);font-weight:700;font-size:13px;margin:3px 0 6px;word-break:break-all}
+.card .meta{font-size:9px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap}
+.card .del{position:absolute;bottom:8px;right:10px;color:var(--dim);cursor:pointer;font-size:11px;background:none;border:none;font-family:var(--mono)}
+.card .del:hover{color:var(--magenta)}
+
+.hud{position:fixed;right:18px;bottom:16px;z-index:15;text-align:right;font-size:10px;color:var(--dim);line-height:1.8}
+.hud b{color:var(--ink);font-weight:500}
+.hud .lbl{letter-spacing:.2em;font-size:8px}
+.toggles{position:fixed;left:16px;bottom:16px;z-index:15;display:flex;gap:8px;flex-wrap:wrap}
+@media(min-width:721px){.toggles{left:296px}}
+.tg{cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:7px 12px;backdrop-filter:blur(6px)}
+.tg.on{color:var(--cyan);border-color:var(--cyan)}
+.tg:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
+
+.drop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+  background:rgba(11,11,16,.85);border:2px dashed var(--cyan)}
+.drop.show{display:flex}
+.drop p{font-family:var(--disp);font-weight:800;font-size:24px;color:var(--cyan);letter-spacing:.06em;text-align:center}
+.toast{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:50;
+  background:var(--panel);border:1px solid var(--line);padding:10px 16px;font-size:11px;
+  opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;backdrop-filter:blur(6px)}
+.toast.show{opacity:1}
+.toast.err{border-color:var(--magenta);color:var(--magenta)}
+
+.spin{position:fixed;inset:0;z-index:45;display:none;align-items:center;justify-content:center;background:rgba(11,11,16,.5)}
+.spin.show{display:flex}
+.spin div{font-size:11px;letter-spacing:.3em;color:var(--cyan);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+
+@media(max-width:720px){
+  header{flex-wrap:wrap;gap:8px;padding:10px 12px}
+  input[type=url]{flex:1 1 100%}
+  aside{top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:8px;right:56px;width:auto;max-height:32vh;
+    flex-direction:row;overflow-x:auto;overflow-y:hidden}
+  .card{min-width:200px;flex:0 0 auto}
+  .toggles{left:auto;right:8px;bottom:auto;top:50%;transform:translateY(-50%);
+    flex-direction:column;gap:6px}
+  .tg{padding:8px 6px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:9px}
+  .hud{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .brand.glitching::before,.brand.glitching::after,.spin div{animation:none}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="fx"></div>
+
+<header>
+  <div class="brand" id="brand" data-t="FRAGMENT//ARCHIVE">FRAGMENT<em>//</em>ARCHIVE
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.10 GLB+3DGS]</span></small>
+  </div>
+  <div class="loadbar">
+    <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
+    <button class="btn" id="urlBtn">URL読込</button>
+    <button class="btn mg" id="fileBtn">ファイル選択</button>
+    <input type="file" id="fileIn" accept=".glb,.spz,.ply,.splat,.ksplat,.sog" multiple hidden>
+  </div>
+</header>
+
+<aside id="rail">
+  <h2>ARCHIVE INDEX</h2>
+</aside>
+
+<div class="toggles">
+  <button class="tg" id="tgWire">WIREFRAME</button>
+  <button class="tg on" id="tgRot">AUTO-ROTATE</button>
+  <button class="tg on" id="tgGlitch">GLITCH</button>
+  <button class="tg on" id="tgGrid">GRID</button>
+  <button class="tg" id="tgFlip">FLIP</button>
+</div>
+
+<div class="hud" id="hud">
+  <div class="lbl">SPECIMEN DATA</div>
+  <div id="hLine1">–</div>
+  <div id="hLine2">–</div>
+</div>
+
+<div class="drop" id="drop"><p>DROP FILE HERE<br><span style="font-size:11px;font-family:var(--mono);letter-spacing:.2em">.GLB / .SPZ / .PLY / .SPLAT</span></p></div>
+<div class="spin" id="spin"><div id="spinTxt">DECODING…</div></div>
+<div class="toast" id="toast"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.1.0/spark.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+
+/* ================= renderer / scene ================= */
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0b0b10);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 500);
+camera.position.set(2.5, 2, 3.5);
+
+const spark = new SparkRenderer({renderer});
+scene.add(spark);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.05).texture;
+pmrem.dispose();
+
+scene.add(new THREE.HemisphereLight(0xbfc4d8, 0x14141c, 0.7));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(3,5,4); scene.add(key);
+const rimC = new THREE.PointLight(0x58f6e0, 8, 20); rimC.position.set(-4,2,-3); scene.add(rimC);
+const rimM = new THREE.PointLight(0xff3ea5, 7, 20); rimM.position.set(4,1,-4); scene.add(rimM);
+
+const grid = new THREE.GridHelper(20, 40, 0x2a2a38, 0x1a1a26);
+scene.add(grid);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.2;
+controls.target.set(0, 0.9, 0);
+
+const gltfLoader = new GLTFLoader();
+const draco = new DRACOLoader();
+draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+gltfLoader.setDRACOLoader(draco);
+
+/* ================= storage ================= */
+function bufToB64(buf){
+  const u=new Uint8Array(buf); let s='';
+  for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
+  return btoa(s);
+}
+function b64ToBuf(b){
+  const s=atob(b), u=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i);
+  return u.buffer;
+}
+const store=(()=>{ 
+  if(window.storage){
+    return {
+      async save(id, meta, buf){
+        const payload={meta};
+        if(buf){
+          const b64=bufToB64(buf);
+          if(b64.length>4800000) throw new Error('5MB制限超過');
+          payload.b64=b64;
+        }
+        await window.storage.set('entry-'+id, JSON.stringify(payload));
+      },
+      async all(){
+        try{
+          const res=await window.storage.list('entry-');
+          const out=[];
+          for(const k of (res?res.keys:[])){
+            try{
+              const r=await window.storage.get(k);
+              if(r){const d=JSON.parse(r.value); out.push({id:k.slice(6), meta:d.meta, buf:d.b64?b64ToBuf(d.b64):null});}
+            }catch(e){}
+          }
+          return out;
+        }catch(e){return [];}
+      },
+      async remove(id){try{await window.storage.delete('entry-'+id);}catch(e){}}
+    };
+  }
+  if(window.indexedDB){
+    const db=()=>new Promise((res,rej)=>{
+      const rq=indexedDB.open('fragment-archive',1);
+      rq.onupgradeneeded=()=>rq.result.createObjectStore('e');
+      rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+    });
+    const tx=async(mode,fn)=>{
+      const d=await db();
+      return new Promise((res,rej)=>{
+        const t=d.transaction('e',mode), s=t.objectStore('e'), r=fn(s);
+        t.oncomplete=()=>res(r.result); t.onerror=()=>rej(t.error);
+      });
+    };
+    return {
+      async save(id, meta, buf){await tx('readwrite',s=>s.put({meta, buf:buf||null},id));},
+      async all(){
+        const d=await db();
+        return new Promise((res,rej)=>{
+          const out=[], c=d.transaction('e').objectStore('e').openCursor();
+          c.onsuccess=()=>{
+            const cur=c.result;
+            if(cur){out.push({id:cur.key, meta:cur.value.meta, buf:cur.value.buf}); cur.continue();}
+            else res(out);
+          };
+          c.onerror=()=>rej(c.error);
+        });
+      },
+      async remove(id){await tx('readwrite',s=>s.delete(id));}
+    };
+  }
+  return null;
+})();
+
+/* ================= archive ================= */
+const rail=document.getElementById('rail');
+const entries=[];
+let current=null, seq=0;
+
+const SPLAT_EXTS=['spz','ply','splat','ksplat','sog'];
+function extOf(s){const m=(s||'').split('?')[0].toLowerCase().match(/\.([a-z0-9]+)$/);return m?m[1]:'';}
+function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
+
+function addEntry(name, obj, source, info, opts){
+  opts=opts||{};
+  if(opts.acc){
+    const n=parseInt(opts.acc.split('-')[1],10);
+    if(n>seq) seq=n;
+  } else seq++;
+
+  const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
+  const e={id:opts.id||null, acc, name, obj, info, maxDim:info.maxDim,
+    date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind};
+  entries.push(e);
+
+  const card=document.createElement('div');
+  card.className='card'; card.tabIndex=0;
+  const badge=info.kind==='splat'?'3DGS':'MESH';
+  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source} / ${badge}</span></div>
+    <div class="nm">${esc(name)}</div>
+    <div class="meta"><span>${esc(info.statLabel)}</span><span>${e.date}</span></div>
+    <button class="del" title="削除">×</button>`;
+  card.addEventListener('click',ev=>{
+    if(ev.target.classList.contains('del')){removeEntry(e,card);return;}
+    show(e,card);
+  });
+  card.addEventListener('keydown',ev=>{if(ev.key==='Enter')show(e,card);});
+  e.card=card;
+  rail.appendChild(card);
+  show(e,card);
+}
+
+function removeEntry(e,card){
+  if(e.id && store) store.remove(e.id);
+  if(current===e){scene.remove(e.obj); current=null;}
+  e.obj.traverse(o=>{if(o.dispose)try{o.dispose();}catch(x){}});
+  entries.splice(entries.indexOf(e),1);
+  card.remove();
+  if(entries.length){const last=entries[entries.length-1]; show(last,last.card);}
+}
+
+function show(e,card){
+  if(current) scene.remove(current.obj);
+  current=e;
+  scene.add(e.obj);
+  applyWire();
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
+  card.classList.add('active');
+  const narrow=innerWidth/innerHeight<0.75;
+  const cy=e.maxDim*(narrow?0.55:0.45);
+  controls.target.set(0, cy, 0);
+  const d=e.maxDim*(narrow?2.9:2.1);
+  const dir=new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  if(!isFinite(dir.x)||dir.length()===0) dir.set(0.6,0.4,1).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d);
+  document.getElementById('hLine1').innerHTML=e.info.hud1;
+  document.getElementById('hLine2').innerHTML=e.info.hud2;
+  brandGlitch();
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ================= builders ================= */
+function normalizeAndMeasure(obj){
+  const box=new THREE.Box3().setFromObject(obj);
+  const size=box.getSize(new THREE.Vector3());
+  const c=box.getCenter(new THREE.Vector3());
+  obj.position.sub(c);
+  obj.position.y += size.y/2;
+  return Math.max(size.x,size.y,size.z)||1;
+}
+
+async function buildGLB(buf){
+  const gltf=await new Promise((res,rej)=>gltfLoader.parse(buf,'',res,rej));
+  const obj=gltf.scene;
+  const grp=new THREE.Group(); grp.add(obj);
+  const maxDim=normalizeAndMeasure(obj);
+  // 中身をグループ直下で正規化したので、グループ座標はそのまま
+  let tri=0,vtx=0; const mats=new Set();
+  obj.traverse(m=>{
+    if(m.isMesh){
+      vtx+=m.geometry.attributes.position.count;
+      tri+=(m.geometry.index?m.geometry.index.count:m.geometry.attributes.position.count)/3;
+      mats.add(m.material);
+      m.userData.origMat=m.material;
+    }
+  });
+  tri=Math.round(tri);
+  return {obj:grp, info:{
+    kind:'glb', maxDim,
+    statLabel:'△ '+tri.toLocaleString(),
+    hud1:'三角面 <b>'+tri.toLocaleString()+'</b> / 頂点 <b>'+vtx.toLocaleString()+'</b>',
+    hud2:'マテリアル <b>'+mats.size+'</b>'
+  }};
+}
+
+async function buildSplat(url){
+  const splat=await new Promise((res,rej)=>{
+    const m=new SplatMesh({url, onLoad:()=>res(m)});
+    setTimeout(()=>rej(new Error('読込タイムアウト(60秒)')),60000);
+  });
+  // 3DGSは上下逆(Y-down)で書き出されることが多いので反転
+  splat.rotation.x=Math.PI;
+  // 外れ値に強い中心とサイズの推定(サンプリング)
+  const n=splat.numSplats||1;
+  const step=Math.max(1,Math.floor(n/20000));
+  const xs=[],ys=[],zs=[];
+  splat.forEachSplat((i,center)=>{
+    if(i%step===0){xs.push(center.x);ys.push(center.y);zs.push(center.z);}
+  });
+  const med=a=>{const b=[...a].sort((p,q)=>p-q);return b[Math.floor(b.length/2)]||0;};
+  const mx=med(xs),my=med(ys),mz=med(zs);
+  const ds=xs.map((x,i)=>Math.hypot(x-mx,ys[i]-my,zs[i]-mz)).sort((p,q)=>p-q);
+  const r=ds[Math.floor(ds.length*0.9)]||1;
+  splat.position.set(-mx, my, mz); // rotation.x=πを考慮した打ち消し
+  const grp=new THREE.Group();
+  grp.add(splat);
+  grp.position.y=r*0.9;
+  grp.userData.splat=splat;
+  return {obj:grp, info:{
+    kind:'splat', maxDim:r*2,
+    statLabel:'✳ '+n.toLocaleString()+' splats',
+    hud1:'スプラット数 <b>'+n.toLocaleString()+'</b>',
+    hud2:'形式 <b>3D Gaussian Splatting</b>'
+  }};
+}
+
+/* ================= loading ================= */
+const toast=document.getElementById('toast');
+let toastT;
+function say(msg,err){
+  toast.textContent=msg;
+  toast.classList.toggle('err',!!err);
+  toast.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>toast.classList.remove('show'), 4200);
+}
+const spin=document.getElementById('spin');
+
+async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
+  spin.classList.add('show');
+  try{
+    const kind=kindOf(ext);
+    let built;
+    if(kind==='glb'){
+      if(!buf){
+        const res=await fetch(url);
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        buf=await res.arrayBuffer();
+      }
+      built=await buildGLB(buf);
+    } else {
+      let target=url;
+      if(!target && buf) target=URL.createObjectURL(new Blob([buf]));
+      built=await buildSplat(target);
+    }
+    const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
+    addEntry(name, built.obj, source, built.info, restoreOpts||{id});
+    if(persist && store){
+      const e=entries[entries.length-1];
+      const meta={name, source, date:e.date, acc:e.acc, ext, kind};
+      if(url){
+        meta.url=url;
+        store.save(id, meta, null)
+          .then(()=>say(name+' を収蔵しました(URL参照)'))
+          .catch(()=>say(name+' を表示しました(保存失敗)', true));
+      } else if(kind==='glb'){
+        store.save(id, meta, buf)
+          .then(()=>say(name+' を収蔵しました'))
+          .catch(err=>say(name+' を表示しました(保存不可: '+err.message+')', true));
+      } else {
+        say(name+' を表示しました(ローカルの3DGSは保存対象外。URL読込なら収蔵できます)');
+      }
+    }
+  }catch(err){
+    console.error(err);
+    say('読込失敗: '+(err&&err.message?err.message:err), true);
+  }finally{
+    spin.classList.remove('show');
+  }
+}
+
+document.getElementById('fileBtn').onclick=()=>document.getElementById('fileIn').click();
+document.getElementById('fileIn').addEventListener('change', async e=>{
+  for(const f of [...e.target.files]){
+    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
+      source:'LOCAL', ext:extOf(f.name), persist:true});
+  }
+  e.target.value='';
+});
+
+const drop=document.getElementById('drop');
+addEventListener('dragover', e=>{e.preventDefault(); drop.classList.add('show');});
+drop.addEventListener('dragleave', ()=>drop.classList.remove('show'));
+addEventListener('drop', async e=>{
+  e.preventDefault(); drop.classList.remove('show');
+  for(const f of [...e.dataTransfer.files]){
+    const ext=extOf(f.name);
+    if(ext!=='glb' && !SPLAT_EXTS.includes(ext)) continue;
+    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
+      source:'DROP', ext, persist:true});
+  }
+});
+
+document.getElementById('urlBtn').onclick=async()=>{
+  const u=document.getElementById('urlIn').value.trim();
+  if(!u) return;
+  const name=decodeURIComponent(u.split('/').pop().replace(/\.[a-z0-9]+(\?.*)?$/i,''))||'untitled';
+  await loadAny({url:u, name, source:'URL', ext:extOf(u), persist:true});
+};
+
+/* ================= toggles / glitch ================= */
+const state={wire:false, rot:true, glitch:true, grid:true};
+function bindTg(id,key,fn){
+  const b=document.getElementById(id);
+  b.onclick=()=>{state[key]=!state[key]; b.classList.toggle('on',state[key]); if(fn)fn();};
+}
+bindTg('tgWire','wire',applyWire);
+bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
+bindTg('tgGlitch','glitch');
+bindTg('tgGrid','grid',()=>grid.visible=state.grid);
+document.getElementById('tgFlip').onclick=()=>{
+  if(!current) return;
+  const s=current.obj.userData.splat;
+  if(s){s.rotation.x = s.rotation.x===0 ? Math.PI : 0;}
+  else current.obj.rotation.x = current.obj.rotation.x===0 ? Math.PI : 0;
+};
+
+function applyWire(){
+  if(!current) return;
+  current.obj.traverse(m=>{
+    if(m.isMesh && m.material && m.material.wireframe!==undefined) m.material.wireframe=state.wire;
+  });
+}
+
+const glitchMatC=new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true});
+const glitchMatM=new THREE.MeshBasicMaterial({color:0xff3ea5, wireframe:true});
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function brandGlitch(){
+  if(reduced) return;
+  const b=document.getElementById('brand');
+  b.classList.remove('glitching'); void b.offsetWidth;
+  b.classList.add('glitching');
+}
+
+function glitchPulse(){
+  const delay=1800+Math.random()*3200;
+  setTimeout(()=>{
+    if(state.glitch && current && !reduced){
+      const splat=current.obj.userData.splat;
+      const ox=current.obj.position.x;
+      if(splat){
+        splat.recolor=new THREE.Color(Math.random()<0.5?0x58f6e0:0xff3ea5);
+      } else {
+        const gm=Math.random()<0.5?glitchMatC:glitchMatM;
+        current.obj.traverse(m=>{if(m.isMesh){m.material=gm;}});
+      }
+      current.obj.position.x=ox+(Math.random()-0.5)*current.maxDim*0.03;
+      brandGlitch();
+      setTimeout(()=>{
+        if(!current) return;
+        const sp=current.obj.userData.splat;
+        if(sp){sp.recolor=new THREE.Color(0xffffff);}
+        else current.obj.traverse(m=>{if(m.isMesh&&m.userData.origMat){m.material=m.userData.origMat;}});
+        current.obj.position.x=ox;
+        applyWire();
+      }, 60+Math.random()*110);
+    }
+    glitchPulse();
+  }, delay);
+}
+glitchPulse();
+
+/* ================= default specimen ================= */
+function defaultSpecimen(){
+  const pts=[];
+  const prof=[[0.001,1.55],[0.11,1.52],[0.13,1.42],[0.17,1.3],[0.2,1.1],[0.19,0.95],[0.22,0.8],[0.3,0.55],[0.42,0.3],[0.52,0.12],[0.55,0.02]];
+  prof.forEach(p=>pts.push(new THREE.Vector2(p[0],p[1])));
+  const g=new THREE.LatheGeometry(pts, 48);
+  const body=new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    color:0x14141d, roughness:0.5, metalness:0.35,
+    emissive:0x0a2a26, side:THREE.DoubleSide
+  }));
+  body.userData.origMat=body.material;
+  const wireG=g.clone(); wireG.scale(1.012,1.012,1.012);
+  const wire=new THREE.Mesh(wireG,
+    new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true, transparent:true, opacity:0.28}));
+  wire.userData.origMat=wire.material;
+  const grp=new THREE.Group();
+  grp.add(body); grp.add(wire);
+  const N=500, pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2, h=Math.random()*1.6, r=0.15+Math.random()*0.55;
+    pos[i*3]=Math.cos(a)*r; pos[i*3+1]=h; pos[i*3+2]=Math.sin(a)*r;
+  }
+  const pg=new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  grp.add(new THREE.Points(pg, new THREE.PointsMaterial({color:0xff3ea5,size:0.012,transparent:true,opacity:0.7})));
+  addEntry('UNTITLED DRESS / PROCEDURAL', grp, 'DEMO', {
+    kind:'glb', maxDim:1.6,
+    statLabel:'△ 1,920',
+    hud1:'三角面 <b>1,920</b>',
+    hud2:'プロシージャル生成'
+  });
+}
+
+/* ================= loop / resize ================= */
+function resize(){
+  const rect=canvas.getBoundingClientRect();
+  const w=Math.max(1,Math.round(rect.width));
+  const h=Math.max(1,Math.round(rect.height));
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', ()=>setTimeout(resize,300));
+if(window.visualViewport) visualViewport.addEventListener('resize', resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('touchmove', e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
+resize();
+
+renderer.setAnimationLoop(()=>{
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+/* ================= init ================= */
+(async function init(){
+  let restored=0;
+  if(store){
+    try{
+      const saved=await store.all();
+      saved.sort((a,b)=>(a.meta.acc||'').localeCompare(b.meta.acc||''));
+      for(const s of saved){
+        try{
+          const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
+          await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
+            ext, persist:false,
+            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date}});
+          restored++;
+        }catch(e){
+          say('復元失敗: '+s.meta.name, true);
+        }
+      }
+    }catch(e){}
+  }
+  if(restored===0) defaultSpecimen();
+  else say('収蔵品 '+restored+' 点を復元しました');
+})();
+</script>
+</body>
+</html>
