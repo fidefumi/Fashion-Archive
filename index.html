@@ -22,7 +22,6 @@ html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:12px}
 canvas#gl{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none}
 
-/* scanlines + vignette */
 .fx{position:fixed;inset:0;pointer-events:none;z-index:5}
 .fx::before{content:"";position:absolute;inset:0;
   background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 3px);
@@ -30,7 +29,6 @@ canvas#gl{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch
 .fx::after{content:"";position:absolute;inset:0;
   background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
 
-/* ---- header ---- */
 header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;
   padding:14px 18px;border-bottom:1px solid var(--line);
   background:linear-gradient(180deg,rgba(11,11,16,.9),rgba(11,11,16,.55) 80%,transparent)}
@@ -58,7 +56,6 @@ input[type=url]::placeholder{color:var(--dim)}
 .btn:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
 .btn.mg:hover{border-color:var(--magenta);color:var(--magenta)}
 
-/* ---- archive rail ---- */
 aside{position:fixed;top:76px;bottom:16px;left:16px;width:264px;z-index:15;
   display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:4px;
   scrollbar-width:thin;scrollbar-color:var(--line) transparent}
@@ -75,7 +72,6 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .card .del{position:absolute;bottom:8px;right:10px;color:var(--dim);cursor:pointer;font-size:11px;background:none;border:none;font-family:var(--mono)}
 .card .del:hover{color:var(--magenta)}
 
-/* ---- HUD / toggles ---- */
 .hud{position:fixed;right:18px;bottom:16px;z-index:15;text-align:right;font-size:10px;color:var(--dim);line-height:1.8}
 .hud b{color:var(--ink);font-weight:500}
 .hud .lbl{letter-spacing:.2em;font-size:8px}
@@ -86,11 +82,10 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .tg.on{color:var(--cyan);border-color:var(--cyan)}
 .tg:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
 
-/* ---- drop overlay / toast ---- */
 .drop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
   background:rgba(11,11,16,.85);border:2px dashed var(--cyan)}
 .drop.show{display:flex}
-.drop p{font-family:var(--disp);font-weight:800;font-size:26px;color:var(--cyan);letter-spacing:.06em}
+.drop p{font-family:var(--disp);font-weight:800;font-size:24px;color:var(--cyan);letter-spacing:.06em;text-align:center}
 .toast{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:50;
   background:var(--panel);border:1px solid var(--line);padding:10px 16px;font-size:11px;
   opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;backdrop-filter:blur(6px)}
@@ -102,7 +97,6 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .spin div{font-size:11px;letter-spacing:.3em;color:var(--cyan);animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:.25}}
 
-/* ---- mobile ---- */
 @media(max-width:720px){
   header{flex-wrap:wrap;gap:8px;padding:10px 12px}
   input[type=url]{flex:1 1 100%}
@@ -125,13 +119,13 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FRAGMENT//ARCHIVE">FRAGMENT<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.9]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.10 GLB+3DGS]</span></small>
   </div>
   <div class="loadbar">
-    <input type="url" id="urlIn" placeholder="https://…/model.glb (CORS許可が必要)">
+    <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
     <button class="btn" id="urlBtn">URL読込</button>
     <button class="btn mg" id="fileBtn">ファイル選択</button>
-    <input type="file" id="fileIn" accept=".glb" multiple hidden>
+    <input type="file" id="fileIn" accept=".glb,.spz,.ply,.splat,.ksplat,.sog" multiple hidden>
   </div>
 </header>
 
@@ -144,276 +138,74 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
   <button class="tg on" id="tgRot">AUTO-ROTATE</button>
   <button class="tg on" id="tgGlitch">GLITCH</button>
   <button class="tg on" id="tgGrid">GRID</button>
+  <button class="tg" id="tgFlip">FLIP</button>
 </div>
 
 <div class="hud" id="hud">
   <div class="lbl">SPECIMEN DATA</div>
-  <div>三角面 <b id="hTri">–</b> / 頂点 <b id="hVtx">–</b></div>
-  <div>マテリアル <b id="hMat">–</b></div>
+  <div id="hLine1">–</div>
+  <div id="hLine2">–</div>
 </div>
 
-<div class="drop" id="drop"><p>DROP .GLB HERE</p></div>
-<div class="spin" id="spin"><div>DECODING…</div></div>
+<div class="drop" id="drop"><p>DROP FILE HERE<br><span style="font-size:11px;font-family:var(--mono);letter-spacing:.2em">.GLB / .SPZ / .PLY / .SPLAT</span></p></div>
+<div class="spin" id="spin"><div id="spinTxt">DECODING…</div></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.1.0/spark.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+
 /* ================= renderer / scene ================= */
 const canvas = document.getElementById('gl');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.setClearColor(0x0b0b10);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0b0b10, 8, 30);
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 500);
+camera.position.set(2.5, 2, 3.5);
 
-// procedural environment (metallic素材の映り込み用)
-{
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const env = new THREE.Scene();
-  env.background = new THREE.Color(0x2a2a36);
-  const panel = (color, x, y, z, rx, ry) => {
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(14, 14),
-      new THREE.MeshBasicMaterial({color, side:THREE.DoubleSide}));
-    p.position.set(x, y, z); p.rotation.set(rx, ry, 0);
-    env.add(p);
-  };
-  panel(0xffffff, 0, 10, 0, Math.PI/2, 0);
-  panel(0x9fe8de, -10, 3, 0, 0, Math.PI/2);
-  panel(0xd98ab8, 10, 3, 0, 0, -Math.PI/2);
-  panel(0x555566, 0, 3, -10, 0, 0);
-  scene.environment = pmrem.fromScene(env, 0.05).texture;
-  pmrem.dispose();
-}
+const spark = new SparkRenderer({renderer});
+scene.add(spark);
 
-scene.add(new THREE.HemisphereLight(0xbfc4d8, 0x14141c, 0.9));
-const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(3,5,4); scene.add(key);
-const rimC = new THREE.PointLight(0x58f6e0, 1.1, 20); rimC.position.set(-4,2,-3); scene.add(rimC);
-const rimM = new THREE.PointLight(0xff3ea5, 1.0, 20); rimM.position.set(4,1,-4); scene.add(rimM);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.05).texture;
+pmrem.dispose();
+
+scene.add(new THREE.HemisphereLight(0xbfc4d8, 0x14141c, 0.7));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(3,5,4); scene.add(key);
+const rimC = new THREE.PointLight(0x58f6e0, 8, 20); rimC.position.set(-4,2,-3); scene.add(rimC);
+const rimM = new THREE.PointLight(0xff3ea5, 7, 20); rimM.position.set(4,1,-4); scene.add(rimM);
 
 const grid = new THREE.GridHelper(20, 40, 0x2a2a38, 0x1a1a26);
 scene.add(grid);
 
-/* ================= simple orbit controls ================= */
-const ctrl = {
-  target: new THREE.Vector3(0,0.9,0),
-  r:4, theta:0.6, phi:1.25,
-  rT:4, thetaT:0.6, phiT:1.25,
-  panT: new THREE.Vector3(0,0.9,0),
-  dragging:false
-};
-function applyCam(){
-  ctrl.r += (ctrl.rT - ctrl.r)*0.12;
-  ctrl.theta += (ctrl.thetaT - ctrl.theta)*0.12;
-  ctrl.phi += (ctrl.phiT - ctrl.phi)*0.12;
-  ctrl.target.lerp(ctrl.panT, 0.12);
-  const sp = Math.sin(ctrl.phi);
-  camera.position.set(
-    ctrl.target.x + ctrl.r*sp*Math.sin(ctrl.theta),
-    ctrl.target.y + ctrl.r*Math.cos(ctrl.phi),
-    ctrl.target.z + ctrl.r*sp*Math.cos(ctrl.theta)
-  );
-  camera.lookAt(ctrl.target);
-}
-let px=0, py=0, pBtn=0, pinch=0;
-canvas.addEventListener('contextmenu', e=>e.preventDefault());
-canvas.addEventListener('pointerdown', e=>{
-  if(e.pointerType==='touch') return;
-  ctrl.dragging=true; px=e.clientX; py=e.clientY; pBtn=e.button;
-  canvas.setPointerCapture(e.pointerId);
-});
-canvas.addEventListener('pointermove', e=>{
-  if(!ctrl.dragging || e.pointerType==='touch') return;
-  const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
-  if(pBtn===2 || e.shiftKey) pan(dx,dy); else rotate(dx,dy);
-});
-canvas.addEventListener('pointerup', ()=>ctrl.dragging=false);
-canvas.addEventListener('wheel', e=>{
-  e.preventDefault();
-  ctrl.rT = clamp(ctrl.rT*(1+e.deltaY*0.0012), 0.3, 60);
-},{passive:false});
-canvas.addEventListener('touchstart', e=>{
-  if(e.touches.length===1){px=e.touches[0].clientX; py=e.touches[0].clientY;}
-  else if(e.touches.length===2){pinch=tDist(e);}
-},{passive:true});
-canvas.addEventListener('touchmove', e=>{
-  e.preventDefault();
-  if(e.touches.length===1){
-    const dx=e.touches[0].clientX-px, dy=e.touches[0].clientY-py;
-    px=e.touches[0].clientX; py=e.touches[0].clientY; rotate(dx,dy);
-  } else if(e.touches.length===2){
-    const d=tDist(e); ctrl.rT=clamp(ctrl.rT*(pinch/d),0.3,60); pinch=d;
-  }
-},{passive:false});
-function tDist(e){const a=e.touches[0],b=e.touches[1];return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}
-function rotate(dx,dy){
-  ctrl.thetaT -= dx*0.006;
-  ctrl.phiT = clamp(ctrl.phiT - dy*0.006, 0.05, Math.PI-0.05);
-}
-function pan(dx,dy){
-  const s = ctrl.r*0.0015;
-  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
-  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
-  ctrl.panT.addScaledVector(right,-dx*s).addScaledVector(up,dy*s);
-}
-const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.2;
+controls.target.set(0, 0.9, 0);
 
-/* ================= minimal GLB parser ================= */
-const COMP = {5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array};
-const NCOMP = {SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT4:16};
+const gltfLoader = new GLTFLoader();
+const draco = new DRACOLoader();
+draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+gltfLoader.setDRACOLoader(draco);
 
-function parseGLB(buf){
-  const dv = new DataView(buf);
-  if(dv.getUint32(0,true)!==0x46546C67) throw new Error('GLBファイルではありません');
-  let off=12, json=null, bin=null;
-  while(off < dv.getUint32(8,true)){
-    const len=dv.getUint32(off,true), type=dv.getUint32(off+4,true);
-    const chunk=buf.slice(off+8, off+8+len);
-    if(type===0x4E4F534A) json=JSON.parse(new TextDecoder().decode(chunk));
-    else if(type===0x004E4942) bin=chunk;
-    off += 8+len;
-  }
-  if(!json) throw new Error('JSONチャンクが見つかりません');
-  const req = json.extensionsRequired||[];
-  if(req.includes('KHR_draco_mesh_compression')) throw new Error('Draco圧縮GLBは非対応です(Blenderで圧縮なし再書き出しを)');
-  return buildScene(json, bin);
-}
-
-function readAcc(json, bin, i){
-  const a=json.accessors[i], bv=json.bufferViews[a.bufferView];
-  const T=COMP[a.componentType], n=NCOMP[a.type], count=a.count;
-  const stride=bv.byteStride||0, tight=T.BYTES_PER_ELEMENT*n;
-  const base=(bv.byteOffset||0)+(a.byteOffset||0);
-  let out;
-  if(stride && stride!==tight){
-    out=new T(count*n);
-    for(let e=0;e<count;e++){
-      const src=new T(bin.slice(base+e*stride, base+e*stride+tight));
-      out.set(src, e*n);
-    }
-  } else {
-    out=new T(bin.slice(base, base+count*tight));
-  }
-  if(a.componentType!==5126 && a.normalized){
-    const max=(a.componentType===5121)?255:(a.componentType===5123)?65535:127;
-    const f=new Float32Array(out.length);
-    for(let k=0;k<out.length;k++) f[k]=out[k]/max;
-    return {arr:f, n};
-  }
-  return {arr:out, n};
-}
-
-function buildScene(json, bin){
-  const texCache={}, matCache={};
-
-  function getTexture(ti){
-    if(texCache[ti]) return texCache[ti];
-    const t=json.textures[ti], img=json.images[t.source];
-    let url=null;
-    if(img.bufferView!==undefined){
-      const bv=json.bufferViews[img.bufferView];
-      const o=bv.byteOffset||0;
-      url=URL.createObjectURL(new Blob([bin.slice(o,o+bv.byteLength)],{type:img.mimeType}));
-    } else if(img.uri && img.uri.startsWith('data:')){
-      url=img.uri;
-    }
-    const tex=new THREE.Texture();
-    if(url){
-      const im=new Image();
-      im.onload=()=>{tex.image=im; tex.needsUpdate=true; if(url.startsWith('blob:'))URL.revokeObjectURL(url);};
-      im.src=url;
-    }
-    tex.flipY=false;
-    const smp=(json.samplers&&t.sampler!==undefined)?json.samplers[t.sampler]:{};
-    const WRAP={33071:THREE.ClampToEdgeWrapping,33648:THREE.MirroredRepeatWrapping,10497:THREE.RepeatWrapping};
-    tex.wrapS=WRAP[smp.wrapS]||THREE.RepeatWrapping;
-    tex.wrapT=WRAP[smp.wrapT]||THREE.RepeatWrapping;
-    texCache[ti]=tex;
-    return tex;
-  }
-
-  function getMaterial(mi, hasColor){
-    const key=mi+'_'+(hasColor?1:0);
-    if(matCache[key]) return matCache[key];
-    let mat;
-    if(mi===undefined){
-      mat=new THREE.MeshStandardMaterial({color:0x8a8a96, roughness:0.75, metalness:0.05});
-    } else {
-      const m=json.materials[mi], p=m.pbrMetallicRoughness||{};
-      const unlit=m.extensions&&m.extensions.KHR_materials_unlit;
-      const bc=p.baseColorFactor||[1,1,1,1];
-      const params={color:new THREE.Color(bc[0],bc[1],bc[2])};
-      if(unlit){ mat=new THREE.MeshBasicMaterial(params); }
-      else{
-        params.roughness=(p.roughnessFactor!==undefined)?p.roughnessFactor:1;
-        params.metalness=(p.metallicFactor!==undefined)?p.metallicFactor:1;
-        if(m.emissiveFactor) params.emissive=new THREE.Color(...m.emissiveFactor);
-        mat=new THREE.MeshStandardMaterial(params);
-      }
-      if(bc[3]<1 || m.alphaMode==='BLEND'){mat.transparent=true; mat.opacity=bc[3];}
-      if(m.alphaMode==='MASK') mat.alphaTest=(m.alphaCutoff!==undefined)?m.alphaCutoff:0.5;
-      if(m.doubleSided) mat.side=THREE.DoubleSide;
-      if(p.baseColorTexture){mat.map=getTexture(p.baseColorTexture.index); mat.map.encoding=THREE.sRGBEncoding;}
-    }
-    if(hasColor) mat.vertexColors=true;
-    matCache[key]=mat;
-    return mat;
-  }
-
-  function primToMesh(prim){
-    const g=new THREE.BufferGeometry();
-    const A=prim.attributes;
-    if(A.POSITION===undefined) return null;
-    const setA=(name, ai, force3)=>{
-      const {arr,n}=readAcc(json,bin,ai);
-      const f=(arr instanceof Float32Array)?arr:Float32Array.from(arr);
-      g.setAttribute(name, new THREE.BufferAttribute(f, force3||n));
-    };
-    setA('position', A.POSITION);
-    if(A.NORMAL!==undefined) setA('normal', A.NORMAL);
-    if(A.TEXCOORD_0!==undefined) setA('uv', A.TEXCOORD_0);
-    let hasColor=false;
-    if(A.COLOR_0!==undefined){setA('color', A.COLOR_0); hasColor=true;}
-    if(prim.indices!==undefined){
-      let {arr}=readAcc(json,bin,prim.indices);
-      if(arr instanceof Uint8Array) arr=Uint16Array.from(arr);
-      g.setIndex(new THREE.BufferAttribute(arr,1));
-    }
-    if(A.NORMAL===undefined) g.computeVertexNormals();
-    return new THREE.Mesh(g, getMaterial(prim.material, hasColor));
-  }
-
-  function nodeObj(ni){
-    const nd=json.nodes[ni], o=new THREE.Group();
-    if(nd.matrix){
-      const m=new THREE.Matrix4().fromArray(nd.matrix);
-      m.decompose(o.position,o.quaternion,o.scale);
-    } else {
-      if(nd.translation) o.position.fromArray(nd.translation);
-      if(nd.rotation) o.quaternion.fromArray(nd.rotation);
-      if(nd.scale) o.scale.fromArray(nd.scale);
-    }
-    if(nd.mesh!==undefined){
-      json.meshes[nd.mesh].primitives.forEach(p=>{
-        const mesh=primToMesh(p); if(mesh) o.add(mesh);
-      });
-    }
-    (nd.children||[]).forEach(c=>o.add(nodeObj(c)));
-    return o;
-  }
-
-  const root=new THREE.Group();
-  const sc=json.scenes[json.scene||0];
-  (sc.nodes||[]).forEach(n=>root.add(nodeObj(n)));
-  return root;
-}
-
-/* ================= archive ================= */
-/* 永続化: Claude上ではwindow.storage、自前ホスト時はIndexedDBを使用 */
+/* ================= storage ================= */
 function bufToB64(buf){
   const u=new Uint8Array(buf); let s='';
   for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
@@ -431,7 +223,7 @@ const store=(()=>{
         const payload={meta};
         if(buf){
           const b64=bufToB64(buf);
-          if(b64.length>4800000) throw new Error('5MB制限を超えるため保存不可');
+          if(b64.length>4800000) throw new Error('5MB制限超過');
           payload.b64=b64;
         }
         await window.storage.set('entry-'+id, JSON.stringify(payload));
@@ -485,45 +277,33 @@ const store=(()=>{
   return null;
 })();
 
+/* ================= archive ================= */
 const rail=document.getElementById('rail');
 const entries=[];
 let current=null, seq=0;
 
-function addEntry(name, obj, source, opts){
+const SPLAT_EXTS=['spz','ply','splat','ksplat','sog'];
+function extOf(s){const m=(s||'').split('?')[0].toLowerCase().match(/\.([a-z0-9]+)$/);return m?m[1]:'';}
+function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
+
+function addEntry(name, obj, source, info, opts){
   opts=opts||{};
   if(opts.acc){
     const n=parseInt(opts.acc.split('-')[1],10);
     if(n>seq) seq=n;
   } else seq++;
-  // normalize: center on grid
-  const box=new THREE.Box3().setFromObject(obj);
-  const size=box.getSize(new THREE.Vector3());
-  const c=box.getCenter(new THREE.Vector3());
-  obj.position.sub(c);
-  obj.position.y += size.y/2;
-  const maxDim=Math.max(size.x,size.y,size.z)||1;
-
-  let tri=0, vtx=0; const mats=new Set();
-  obj.traverse(m=>{
-    if(m.isMesh){
-      const g=m.geometry;
-      vtx += g.attributes.position.count;
-      tri += (g.index?g.index.count:g.attributes.position.count)/3;
-      mats.add(m.material);
-      m.userData.origMat=m.material;
-    }
-  });
 
   const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
-  const e={id:opts.id||null, acc, name, obj, tri:Math.round(tri), vtx, matN:mats.size, maxDim,
-    date:opts.date||new Date().toLocaleString('ja-JP'), source};
+  const e={id:opts.id||null, acc, name, obj, info, maxDim:info.maxDim,
+    date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind};
   entries.push(e);
 
   const card=document.createElement('div');
   card.className='card'; card.tabIndex=0;
-  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source}</span></div>
+  const badge=info.kind==='splat'?'3DGS':'MESH';
+  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source} / ${badge}</span></div>
     <div class="nm">${esc(name)}</div>
-    <div class="meta"><span>△ ${e.tri.toLocaleString()}</span><span>V ${e.vtx.toLocaleString()}</span><span>${e.date}</span></div>
+    <div class="meta"><span>${esc(info.statLabel)}</span><span>${e.date}</span></div>
     <button class="del" title="削除">×</button>`;
   card.addEventListener('click',ev=>{
     if(ev.target.classList.contains('del')){removeEntry(e,card);return;}
@@ -538,9 +318,10 @@ function addEntry(name, obj, source, opts){
 function removeEntry(e,card){
   if(e.id && store) store.remove(e.id);
   if(current===e){scene.remove(e.obj); current=null;}
+  e.obj.traverse(o=>{if(o.dispose)try{o.dispose();}catch(x){}});
   entries.splice(entries.indexOf(e),1);
   card.remove();
-  if(entries.length) show(entries[entries.length-1], entries[entries.length-1].card);
+  if(entries.length){const last=entries[entries.length-1]; show(last,last.card);}
 }
 
 function show(e,card){
@@ -550,17 +331,83 @@ function show(e,card){
   applyWire();
   document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
   card.classList.add('active');
-  const narrow = innerWidth/innerHeight < 0.75;
-  ctrl.panT.set(0, e.maxDim*(narrow?0.55:0.45), 0);
-  ctrl.rT = e.maxDim*(narrow?2.9:2.1);
-  ctrl.thetaT = ctrl.theta + 0.9;
-  document.getElementById('hTri').textContent=e.tri.toLocaleString();
-  document.getElementById('hVtx').textContent=e.vtx.toLocaleString();
-  document.getElementById('hMat').textContent=e.matN;
-  scene.fog.near = e.maxDim*4; scene.fog.far = e.maxDim*14;
+  const narrow=innerWidth/innerHeight<0.75;
+  const cy=e.maxDim*(narrow?0.55:0.45);
+  controls.target.set(0, cy, 0);
+  const d=e.maxDim*(narrow?2.9:2.1);
+  const dir=new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  if(!isFinite(dir.x)||dir.length()===0) dir.set(0.6,0.4,1).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d);
+  document.getElementById('hLine1').innerHTML=e.info.hud1;
+  document.getElementById('hLine2').innerHTML=e.info.hud2;
   brandGlitch();
 }
-function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ================= builders ================= */
+function normalizeAndMeasure(obj){
+  const box=new THREE.Box3().setFromObject(obj);
+  const size=box.getSize(new THREE.Vector3());
+  const c=box.getCenter(new THREE.Vector3());
+  obj.position.sub(c);
+  obj.position.y += size.y/2;
+  return Math.max(size.x,size.y,size.z)||1;
+}
+
+async function buildGLB(buf){
+  const gltf=await new Promise((res,rej)=>gltfLoader.parse(buf,'',res,rej));
+  const obj=gltf.scene;
+  const grp=new THREE.Group(); grp.add(obj);
+  const maxDim=normalizeAndMeasure(obj);
+  // 中身をグループ直下で正規化したので、グループ座標はそのまま
+  let tri=0,vtx=0; const mats=new Set();
+  obj.traverse(m=>{
+    if(m.isMesh){
+      vtx+=m.geometry.attributes.position.count;
+      tri+=(m.geometry.index?m.geometry.index.count:m.geometry.attributes.position.count)/3;
+      mats.add(m.material);
+      m.userData.origMat=m.material;
+    }
+  });
+  tri=Math.round(tri);
+  return {obj:grp, info:{
+    kind:'glb', maxDim,
+    statLabel:'△ '+tri.toLocaleString(),
+    hud1:'三角面 <b>'+tri.toLocaleString()+'</b> / 頂点 <b>'+vtx.toLocaleString()+'</b>',
+    hud2:'マテリアル <b>'+mats.size+'</b>'
+  }};
+}
+
+async function buildSplat(url){
+  const splat=await new Promise((res,rej)=>{
+    const m=new SplatMesh({url, onLoad:()=>res(m)});
+    setTimeout(()=>rej(new Error('読込タイムアウト(60秒)')),60000);
+  });
+  // 3DGSは上下逆(Y-down)で書き出されることが多いので反転
+  splat.rotation.x=Math.PI;
+  // 外れ値に強い中心とサイズの推定(サンプリング)
+  const n=splat.numSplats||1;
+  const step=Math.max(1,Math.floor(n/20000));
+  const xs=[],ys=[],zs=[];
+  splat.forEachSplat((i,center)=>{
+    if(i%step===0){xs.push(center.x);ys.push(center.y);zs.push(center.z);}
+  });
+  const med=a=>{const b=[...a].sort((p,q)=>p-q);return b[Math.floor(b.length/2)]||0;};
+  const mx=med(xs),my=med(ys),mz=med(zs);
+  const ds=xs.map((x,i)=>Math.hypot(x-mx,ys[i]-my,zs[i]-mz)).sort((p,q)=>p-q);
+  const r=ds[Math.floor(ds.length*0.9)]||1;
+  splat.position.set(-mx, my, mz); // rotation.x=πを考慮した打ち消し
+  const grp=new THREE.Group();
+  grp.add(splat);
+  grp.position.y=r*0.9;
+  grp.userData.splat=splat;
+  return {obj:grp, info:{
+    kind:'splat', maxDim:r*2,
+    statLabel:'✳ '+n.toLocaleString()+' splats',
+    hud1:'スプラット数 <b>'+n.toLocaleString()+'</b>',
+    hud2:'形式 <b>3D Gaussian Splatting</b>'
+  }};
+}
 
 /* ================= loading ================= */
 const toast=document.getElementById('toast');
@@ -570,72 +417,80 @@ function say(msg,err){
   toast.classList.toggle('err',!!err);
   toast.classList.add('show');
   clearTimeout(toastT);
-  toastT=setTimeout(()=>toast.classList.remove('show'), 3600);
+  toastT=setTimeout(()=>toast.classList.remove('show'), 4200);
 }
 const spin=document.getElementById('spin');
 
-async function loadBuffer(buf, name, source, url){
+async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
   spin.classList.add('show');
-  await new Promise(r=>setTimeout(r,30));
   try{
-    const obj=parseGLB(buf);
-    const id=Date.now()+'-'+Math.random().toString(36).slice(2,7);
-    addEntry(name, obj, source, {id});
-    if(store){
+    const kind=kindOf(ext);
+    let built;
+    if(kind==='glb'){
+      if(!buf){
+        const res=await fetch(url);
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        buf=await res.arrayBuffer();
+      }
+      built=await buildGLB(buf);
+    } else {
+      let target=url;
+      if(!target && buf) target=URL.createObjectURL(new Blob([buf]));
+      built=await buildSplat(target);
+    }
+    const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
+    addEntry(name, built.obj, source, built.info, restoreOpts||{id});
+    if(persist && store){
       const e=entries[entries.length-1];
-      const meta={name, source, date:e.date, acc:e.acc};
+      const meta={name, source, date:e.date, acc:e.acc, ext, kind};
       if(url){
         meta.url=url;
         store.save(id, meta, null)
-          .then(()=>say(name+' を収蔵しました(URL参照・容量制限なし)'))
+          .then(()=>say(name+' を収蔵しました(URL参照)'))
           .catch(()=>say(name+' を表示しました(保存失敗)', true));
-      } else {
+      } else if(kind==='glb'){
         store.save(id, meta, buf)
-          .then(()=>say(name+' を収蔵しました(次回も表示されます)'))
+          .then(()=>say(name+' を収蔵しました'))
           .catch(err=>say(name+' を表示しました(保存不可: '+err.message+')', true));
+      } else {
+        say(name+' を表示しました(ローカルの3DGSは保存対象外。URL読込なら収蔵できます)');
       }
-    } else {
-      say(name+' を表示しました(この環境では保存できません)');
     }
   }catch(err){
-    say('読込失敗: '+err.message, true);
+    console.error(err);
+    say('読込失敗: '+(err&&err.message?err.message:err), true);
   }finally{
     spin.classList.remove('show');
   }
 }
 
 document.getElementById('fileBtn').onclick=()=>document.getElementById('fileIn').click();
-document.getElementById('fileIn').addEventListener('change', e=>{
-  [...e.target.files].forEach(async f=>{
-    loadBuffer(await f.arrayBuffer(), f.name.replace(/\.glb$/i,''), 'LOCAL');
-  });
+document.getElementById('fileIn').addEventListener('change', async e=>{
+  for(const f of [...e.target.files]){
+    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
+      source:'LOCAL', ext:extOf(f.name), persist:true});
+  }
   e.target.value='';
 });
 
 const drop=document.getElementById('drop');
 addEventListener('dragover', e=>{e.preventDefault(); drop.classList.add('show');});
 drop.addEventListener('dragleave', ()=>drop.classList.remove('show'));
-addEventListener('drop', e=>{
+addEventListener('drop', async e=>{
   e.preventDefault(); drop.classList.remove('show');
-  [...e.dataTransfer.files].filter(f=>/\.glb$/i.test(f.name)).forEach(async f=>{
-    loadBuffer(await f.arrayBuffer(), f.name.replace(/\.glb$/i,''), 'DROP');
-  });
+  for(const f of [...e.dataTransfer.files]){
+    const ext=extOf(f.name);
+    if(ext!=='glb' && !SPLAT_EXTS.includes(ext)) continue;
+    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
+      source:'DROP', ext, persist:true});
+  }
 });
 
 document.getElementById('urlBtn').onclick=async()=>{
   const u=document.getElementById('urlIn').value.trim();
   if(!u) return;
-  spin.classList.add('show');
-  try{
-    const res=await fetch(u);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const buf=await res.arrayBuffer();
-    const name=decodeURIComponent(u.split('/').pop().replace(/\.glb$/i,''))||'untitled';
-    await loadBuffer(buf, name, 'URL', u);
-  }catch(err){
-    spin.classList.remove('show');
-    say('URL読込失敗(CORS制限の可能性): '+err.message, true);
-  }
+  const name=decodeURIComponent(u.split('/').pop().replace(/\.[a-z0-9]+(\?.*)?$/i,''))||'untitled';
+  await loadAny({url:u, name, source:'URL', ext:extOf(u), persist:true});
 };
 
 /* ================= toggles / glitch ================= */
@@ -645,14 +500,20 @@ function bindTg(id,key,fn){
   b.onclick=()=>{state[key]=!state[key]; b.classList.toggle('on',state[key]); if(fn)fn();};
 }
 bindTg('tgWire','wire',applyWire);
-bindTg('tgRot','rot');
+bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
 bindTg('tgGlitch','glitch');
 bindTg('tgGrid','grid',()=>grid.visible=state.grid);
+document.getElementById('tgFlip').onclick=()=>{
+  if(!current) return;
+  const s=current.obj.userData.splat;
+  if(s){s.rotation.x = s.rotation.x===0 ? Math.PI : 0;}
+  else current.obj.rotation.x = current.obj.rotation.x===0 ? Math.PI : 0;
+};
 
 function applyWire(){
   if(!current) return;
   current.obj.traverse(m=>{
-    if(m.isMesh && m.material.wireframe!==undefined) m.material.wireframe=state.wire;
+    if(m.isMesh && m.material && m.material.wireframe!==undefined) m.material.wireframe=state.wire;
   });
 }
 
@@ -671,13 +532,21 @@ function glitchPulse(){
   const delay=1800+Math.random()*3200;
   setTimeout(()=>{
     if(state.glitch && current && !reduced){
-      const gm=Math.random()<0.5?glitchMatC:glitchMatM;
+      const splat=current.obj.userData.splat;
       const ox=current.obj.position.x;
-      current.obj.traverse(m=>{if(m.isMesh){m.material=gm;}});
-      current.obj.position.x=ox+(Math.random()-0.5)*0.08;
+      if(splat){
+        splat.recolor=new THREE.Color(Math.random()<0.5?0x58f6e0:0xff3ea5);
+      } else {
+        const gm=Math.random()<0.5?glitchMatC:glitchMatM;
+        current.obj.traverse(m=>{if(m.isMesh){m.material=gm;}});
+      }
+      current.obj.position.x=ox+(Math.random()-0.5)*current.maxDim*0.03;
       brandGlitch();
       setTimeout(()=>{
-        current.obj.traverse(m=>{if(m.isMesh&&m.userData.origMat){m.material=m.userData.origMat;}});
+        if(!current) return;
+        const sp=current.obj.userData.splat;
+        if(sp){sp.recolor=new THREE.Color(0xffffff);}
+        else current.obj.traverse(m=>{if(m.isMesh&&m.userData.origMat){m.material=m.userData.origMat;}});
         current.obj.position.x=ox;
         applyWire();
       }, 60+Math.random()*110);
@@ -687,7 +556,7 @@ function glitchPulse(){
 }
 glitchPulse();
 
-/* ================= default specimen (procedural dress) ================= */
+/* ================= default specimen ================= */
 function defaultSpecimen(){
   const pts=[];
   const prof=[[0.001,1.55],[0.11,1.52],[0.13,1.42],[0.17,1.3],[0.2,1.1],[0.19,0.95],[0.22,0.8],[0.3,0.55],[0.42,0.3],[0.52,0.12],[0.55,0.02]];
@@ -697,11 +566,13 @@ function defaultSpecimen(){
     color:0x14141d, roughness:0.5, metalness:0.35,
     emissive:0x0a2a26, side:THREE.DoubleSide
   }));
-  const wire=new THREE.Mesh(g.clone().scale(1.012,1.012,1.012),
+  body.userData.origMat=body.material;
+  const wireG=g.clone(); wireG.scale(1.012,1.012,1.012);
+  const wire=new THREE.Mesh(wireG,
     new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true, transparent:true, opacity:0.28}));
+  wire.userData.origMat=wire.material;
   const grp=new THREE.Group();
   grp.add(body); grp.add(wire);
-  // stardust
   const N=500, pos=new Float32Array(N*3);
   for(let i=0;i<N;i++){
     const a=Math.random()*Math.PI*2, h=Math.random()*1.6, r=0.15+Math.random()*0.55;
@@ -710,14 +581,19 @@ function defaultSpecimen(){
   const pg=new THREE.BufferGeometry();
   pg.setAttribute('position', new THREE.BufferAttribute(pos,3));
   grp.add(new THREE.Points(pg, new THREE.PointsMaterial({color:0xff3ea5,size:0.012,transparent:true,opacity:0.7})));
-  addEntry('UNTITLED DRESS / PROCEDURAL', grp, 'DEMO');
+  addEntry('UNTITLED DRESS / PROCEDURAL', grp, 'DEMO', {
+    kind:'glb', maxDim:1.6,
+    statLabel:'△ 1,920',
+    hud1:'三角面 <b>1,920</b>',
+    hud2:'プロシージャル生成'
+  });
 }
 
-/* ================= loop ================= */
+/* ================= loop / resize ================= */
 function resize(){
-  const rect = canvas.getBoundingClientRect();
-  const w = Math.max(1, Math.round(rect.width));
-  const h = Math.max(1, Math.round(rect.height));
+  const rect=canvas.getBoundingClientRect();
+  const w=Math.max(1,Math.round(rect.width));
+  const h=Math.max(1,Math.round(rect.height));
   renderer.setSize(w,h,false);
   camera.aspect=w/h;
   camera.updateProjectionMatrix();
@@ -730,14 +606,13 @@ document.addEventListener('gesturestart', e=>e.preventDefault());
 document.addEventListener('touchmove', e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
 resize();
 
-function loop(){
-  requestAnimationFrame(loop);
-  if(state.rot && !ctrl.dragging) ctrl.thetaT += 0.0035;
-  applyCam();
-  renderer.render(scene,camera);
-}
+renderer.setAnimationLoop(()=>{
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+/* ================= init ================= */
 (async function init(){
-  loop();
   let restored=0;
   if(store){
     try{
@@ -745,18 +620,13 @@ function loop(){
       saved.sort((a,b)=>(a.meta.acc||'').localeCompare(b.meta.acc||''));
       for(const s of saved){
         try{
-          let buf=s.buf;
-          if(!buf && s.meta.url){
-            const res=await fetch(s.meta.url);
-            if(!res.ok) throw new Error('HTTP '+res.status);
-            buf=await res.arrayBuffer();
-          }
-          if(!buf) continue;
-          const obj=parseGLB(buf);
-          addEntry(s.meta.name, obj, s.meta.source, {id:s.id, acc:s.meta.acc, date:s.meta.date});
+          const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
+          await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
+            ext, persist:false,
+            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date}});
           restored++;
         }catch(e){
-          say('復元失敗: '+s.meta.name+'(URLから取得できません)', true);
+          say('復元失敗: '+s.meta.name, true);
         }
       }
     }catch(e){}
