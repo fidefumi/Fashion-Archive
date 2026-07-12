@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>FRAGMENT//ARCHIVE — digital garment specimens</title>
+<title>FASHION//ARCHIVE — digital garment specimens</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -23,9 +23,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:12p
 canvas#gl{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none}
 
 .fx{position:fixed;inset:0;pointer-events:none;z-index:5}
-.fx::before{content:"";position:absolute;inset:0;
-  background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 3px);
-  mix-blend-mode:multiply}
 .fx::after{content:"";position:absolute;inset:0;
   background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
 
@@ -71,6 +68,11 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .card .meta{font-size:9px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap}
 .card .del{position:absolute;bottom:8px;right:10px;color:var(--dim);cursor:pointer;font-size:11px;background:none;border:none;font-family:var(--mono)}
 .card .del:hover{color:var(--magenta)}
+.card .note{margin-top:6px;font-size:10px;line-height:1.6;color:var(--ink);white-space:pre-wrap;word-break:break-all;
+  border-top:1px dashed var(--line);padding:6px 14px 0 0;cursor:text}
+.card .note.empty{color:var(--dim);font-style:italic}
+.card .note textarea{width:100%;min-height:52px;background:rgba(0,0,0,.4);border:1px solid var(--cyan);
+  color:var(--ink);font-family:var(--mono);font-size:10px;line-height:1.6;padding:5px 6px;outline:none;resize:vertical}
 
 .hud{position:fixed;right:18px;bottom:16px;z-index:15;text-align:right;font-size:10px;color:var(--dim);line-height:1.8}
 .hud b{color:var(--ink);font-weight:500}
@@ -118,8 +120,8 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 <div class="fx"></div>
 
 <header>
-  <div class="brand" id="brand" data-t="FRAGMENT//ARCHIVE">FRAGMENT<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.10 GLB+3DGS]</span></small>
+  <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.11]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -241,7 +243,14 @@ const store=(()=>{
           return out;
         }catch(e){return [];}
       },
-      async remove(id){try{await window.storage.delete('entry-'+id);}catch(e){}}
+      async remove(id){try{await window.storage.delete('entry-'+id);}catch(e){}},
+      async setNote(id, note){
+        const r=await window.storage.get('entry-'+id);
+        if(!r) return;
+        const d=JSON.parse(r.value);
+        d.meta.note=note;
+        await window.storage.set('entry-'+id, JSON.stringify(d));
+      }
     };
   }
   if(window.indexedDB){
@@ -271,7 +280,16 @@ const store=(()=>{
           c.onerror=()=>rej(c.error);
         });
       },
-      async remove(id){await tx('readwrite',s=>s.delete(id));}
+      async remove(id){await tx('readwrite',s=>s.delete(id));},
+      async setNote(id, note){
+        const d=await db();
+        return new Promise((res,rej)=>{
+          const t=d.transaction('e','readwrite'), s=t.objectStore('e');
+          const g=s.get(id);
+          g.onsuccess=()=>{const v=g.result; if(v){v.meta.note=note; s.put(v,id);}};
+          t.oncomplete=()=>res(); t.onerror=()=>rej(t.error);
+        });
+      }
     };
   }
   return null;
@@ -295,7 +313,8 @@ function addEntry(name, obj, source, info, opts){
 
   const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
   const e={id:opts.id||null, acc, name, obj, info, maxDim:info.maxDim,
-    date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind};
+    date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind,
+    note:opts.note||''};
   entries.push(e);
 
   const card=document.createElement('div');
@@ -304,7 +323,32 @@ function addEntry(name, obj, source, info, opts){
   card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source} / ${badge}</span></div>
     <div class="nm">${esc(name)}</div>
     <div class="meta"><span>${esc(info.statLabel)}</span><span>${e.date}</span></div>
+    <div class="note"></div>
     <button class="del" title="削除">×</button>`;
+  const noteEl=card.querySelector('.note');
+  function renderNote(){
+    noteEl.textContent=e.note||'+ メモを追加(素材・年代・出典など)';
+    noteEl.classList.toggle('empty',!e.note);
+  }
+  renderNote();
+  noteEl.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    if(noteEl.querySelector('textarea')) return;
+    const ta=document.createElement('textarea');
+    ta.value=e.note;
+    noteEl.textContent='';
+    noteEl.classList.remove('empty');
+    noteEl.appendChild(ta);
+    ta.focus();
+    ta.addEventListener('blur',()=>{
+      e.note=ta.value.trim();
+      renderNote();
+      if(e.id && store && store.setNote){
+        store.setNote(e.id, e.note).catch(()=>say('メモの保存に失敗しました', true));
+      }
+    });
+    ta.addEventListener('click',x=>x.stopPropagation());
+  });
   card.addEventListener('click',ev=>{
     if(ev.target.classList.contains('del')){removeEntry(e,card);return;}
     show(e,card);
@@ -623,7 +667,7 @@ renderer.setAnimationLoop(()=>{
           const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
           await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
             ext, persist:false,
-            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date}});
+            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||''}});
           restored++;
         }catch(e){
           say('復元失敗: '+s.meta.name, true);
