@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>FRAGMENT//ARCHIVE — digital garment specimens</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0b10;
+  --panel:rgba(16,16,24,.82);
+  --line:rgba(232,230,223,.14);
+  --ink:#e8e6df;
+  --dim:#6c6c78;
+  --cyan:#58f6e0;
+  --magenta:#ff3ea5;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --disp:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:12px}
+canvas#gl{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* scanlines + vignette */
+.fx{position:fixed;inset:0;pointer-events:none;z-index:5}
+.fx::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 3px);
+  mix-blend-mode:multiply}
+.fx::after{content:"";position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+/* ---- header ---- */
+header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;
+  padding:14px 18px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(11,11,16,.9),rgba(11,11,16,.55) 80%,transparent)}
+.brand{font-family:var(--disp);font-weight:800;font-size:20px;letter-spacing:.04em;
+  position:relative;white-space:nowrap;user-select:none}
+.brand em{font-style:normal;color:var(--cyan)}
+.brand::before,.brand::after{content:attr(data-t);position:absolute;left:0;top:0;width:100%;overflow:hidden}
+.brand::before{color:var(--magenta);z-index:-1;clip-path:inset(0 0 55% 0);transform:translate(-2px,-1px);opacity:.85}
+.brand::after{color:var(--cyan);z-index:-2;clip-path:inset(55% 0 0 0);transform:translate(2px,1px);opacity:.85}
+.brand.glitching::before{animation:gl1 .32s steps(2) both}
+.brand.glitching::after{animation:gl2 .32s steps(2) both}
+@keyframes gl1{0%{transform:translate(-2px,-1px)}25%{transform:translate(-6px,2px);clip-path:inset(10% 0 40% 0)}60%{transform:translate(3px,-2px);clip-path:inset(40% 0 20% 0)}100%{transform:translate(-2px,-1px)}}
+@keyframes gl2{0%{transform:translate(2px,1px)}30%{transform:translate(6px,-2px);clip-path:inset(60% 0 5% 0)}70%{transform:translate(-4px,2px);clip-path:inset(20% 0 55% 0)}100%{transform:translate(2px,1px)}}
+.brand small{display:block;font-family:var(--mono);font-weight:400;font-size:9px;color:var(--dim);letter-spacing:.22em;margin-top:2px}
+
+.loadbar{display:flex;gap:8px;flex:1;min-width:0;justify-content:flex-end;align-items:center}
+input[type=url]{flex:0 1 340px;min-width:0;background:rgba(0,0,0,.4);border:1px solid var(--line);
+  color:var(--ink);font-family:var(--mono);font-size:11px;padding:8px 10px;outline:none}
+input[type=url]:focus-visible{border-color:var(--cyan)}
+input[type=url]::placeholder{color:var(--dim)}
+.btn{cursor:pointer;border:1px solid var(--line);background:rgba(0,0,0,.4);color:var(--ink);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;padding:8px 14px;white-space:nowrap;
+  transition:border-color .15s,color .15s}
+.btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
+.btn.mg:hover{border-color:var(--magenta);color:var(--magenta)}
+
+/* ---- archive rail ---- */
+aside{position:fixed;top:76px;bottom:16px;left:16px;width:264px;z-index:15;
+  display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:4px;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padding:2px 2px 4px}
+.card{background:var(--panel);border:1px solid var(--line);padding:10px 12px;cursor:pointer;
+  backdrop-filter:blur(6px);transition:border-color .15s;position:relative}
+.card:hover{border-color:rgba(88,246,224,.5)}
+.card.active{border-color:var(--cyan)}
+.card.active::before{content:"VIEWING";position:absolute;top:-1px;right:-1px;
+  background:var(--cyan);color:#000;font-size:8px;letter-spacing:.15em;padding:2px 6px}
+.card .acc{font-size:9px;color:var(--magenta);letter-spacing:.15em}
+.card .nm{font-family:var(--disp);font-weight:700;font-size:13px;margin:3px 0 6px;word-break:break-all}
+.card .meta{font-size:9px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap}
+.card .del{position:absolute;bottom:8px;right:10px;color:var(--dim);cursor:pointer;font-size:11px;background:none;border:none;font-family:var(--mono)}
+.card .del:hover{color:var(--magenta)}
+
+/* ---- HUD / toggles ---- */
+.hud{position:fixed;right:18px;bottom:16px;z-index:15;text-align:right;font-size:10px;color:var(--dim);line-height:1.8}
+.hud b{color:var(--ink);font-weight:500}
+.hud .lbl{letter-spacing:.2em;font-size:8px}
+.toggles{position:fixed;left:16px;bottom:16px;z-index:15;display:flex;gap:8px;flex-wrap:wrap}
+@media(min-width:721px){.toggles{left:296px}}
+.tg{cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:7px 12px;backdrop-filter:blur(6px)}
+.tg.on{color:var(--cyan);border-color:var(--cyan)}
+.tg:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
+
+/* ---- drop overlay / toast ---- */
+.drop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+  background:rgba(11,11,16,.85);border:2px dashed var(--cyan)}
+.drop.show{display:flex}
+.drop p{font-family:var(--disp);font-weight:800;font-size:26px;color:var(--cyan);letter-spacing:.06em}
+.toast{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:50;
+  background:var(--panel);border:1px solid var(--line);padding:10px 16px;font-size:11px;
+  opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;backdrop-filter:blur(6px)}
+.toast.show{opacity:1}
+.toast.err{border-color:var(--magenta);color:var(--magenta)}
+
+.spin{position:fixed;inset:0;z-index:45;display:none;align-items:center;justify-content:center;background:rgba(11,11,16,.5)}
+.spin.show{display:flex}
+.spin div{font-size:11px;letter-spacing:.3em;color:var(--cyan);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* ---- mobile ---- */
+@media(max-width:720px){
+  header{flex-wrap:wrap;gap:8px;padding:10px 12px}
+  input[type=url]{flex:1 1 100%}
+  aside{top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:8px;right:56px;width:auto;max-height:32vh;
+    flex-direction:row;overflow-x:auto;overflow-y:hidden}
+  .card{min-width:200px;flex:0 0 auto}
+  .toggles{left:auto;right:8px;bottom:auto;top:50%;transform:translateY(-50%);
+    flex-direction:column;gap:6px}
+  .tg{padding:8px 6px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:9px}
+  .hud{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .brand.glitching::before,.brand.glitching::after,.spin div{animation:none}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="fx"></div>
+
+<header>
+  <div class="brand" id="brand" data-t="FRAGMENT//ARCHIVE">FRAGMENT<em>//</em>ARCHIVE
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.9]</span></small>
+  </div>
+  <div class="loadbar">
+    <input type="url" id="urlIn" placeholder="https://…/model.glb (CORS許可が必要)">
+    <button class="btn" id="urlBtn">URL読込</button>
+    <button class="btn mg" id="fileBtn">ファイル選択</button>
+    <input type="file" id="fileIn" accept=".glb" multiple hidden>
+  </div>
+</header>
+
+<aside id="rail">
+  <h2>ARCHIVE INDEX</h2>
+</aside>
+
+<div class="toggles">
+  <button class="tg" id="tgWire">WIREFRAME</button>
+  <button class="tg on" id="tgRot">AUTO-ROTATE</button>
+  <button class="tg on" id="tgGlitch">GLITCH</button>
+  <button class="tg on" id="tgGrid">GRID</button>
+</div>
+
+<div class="hud" id="hud">
+  <div class="lbl">SPECIMEN DATA</div>
+  <div>三角面 <b id="hTri">–</b> / 頂点 <b id="hVtx">–</b></div>
+  <div>マテリアル <b id="hMat">–</b></div>
+</div>
+
+<div class="drop" id="drop"><p>DROP .GLB HERE</p></div>
+<div class="spin" id="spin"><div>DECODING…</div></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ================= renderer / scene ================= */
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.setClearColor(0x0b0b10);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b0b10, 8, 30);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
+
+// procedural environment (metallic素材の映り込み用)
+{
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const env = new THREE.Scene();
+  env.background = new THREE.Color(0x2a2a36);
+  const panel = (color, x, y, z, rx, ry) => {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(14, 14),
+      new THREE.MeshBasicMaterial({color, side:THREE.DoubleSide}));
+    p.position.set(x, y, z); p.rotation.set(rx, ry, 0);
+    env.add(p);
+  };
+  panel(0xffffff, 0, 10, 0, Math.PI/2, 0);
+  panel(0x9fe8de, -10, 3, 0, 0, Math.PI/2);
+  panel(0xd98ab8, 10, 3, 0, 0, -Math.PI/2);
+  panel(0x555566, 0, 3, -10, 0, 0);
+  scene.environment = pmrem.fromScene(env, 0.05).texture;
+  pmrem.dispose();
+}
+
+scene.add(new THREE.HemisphereLight(0xbfc4d8, 0x14141c, 0.9));
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(3,5,4); scene.add(key);
+const rimC = new THREE.PointLight(0x58f6e0, 1.1, 20); rimC.position.set(-4,2,-3); scene.add(rimC);
+const rimM = new THREE.PointLight(0xff3ea5, 1.0, 20); rimM.position.set(4,1,-4); scene.add(rimM);
+
+const grid = new THREE.GridHelper(20, 40, 0x2a2a38, 0x1a1a26);
+scene.add(grid);
+
+/* ================= simple orbit controls ================= */
+const ctrl = {
+  target: new THREE.Vector3(0,0.9,0),
+  r:4, theta:0.6, phi:1.25,
+  rT:4, thetaT:0.6, phiT:1.25,
+  panT: new THREE.Vector3(0,0.9,0),
+  dragging:false
+};
+function applyCam(){
+  ctrl.r += (ctrl.rT - ctrl.r)*0.12;
+  ctrl.theta += (ctrl.thetaT - ctrl.theta)*0.12;
+  ctrl.phi += (ctrl.phiT - ctrl.phi)*0.12;
+  ctrl.target.lerp(ctrl.panT, 0.12);
+  const sp = Math.sin(ctrl.phi);
+  camera.position.set(
+    ctrl.target.x + ctrl.r*sp*Math.sin(ctrl.theta),
+    ctrl.target.y + ctrl.r*Math.cos(ctrl.phi),
+    ctrl.target.z + ctrl.r*sp*Math.cos(ctrl.theta)
+  );
+  camera.lookAt(ctrl.target);
+}
+let px=0, py=0, pBtn=0, pinch=0;
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+canvas.addEventListener('pointerdown', e=>{
+  if(e.pointerType==='touch') return;
+  ctrl.dragging=true; px=e.clientX; py=e.clientY; pBtn=e.button;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!ctrl.dragging || e.pointerType==='touch') return;
+  const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
+  if(pBtn===2 || e.shiftKey) pan(dx,dy); else rotate(dx,dy);
+});
+canvas.addEventListener('pointerup', ()=>ctrl.dragging=false);
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  ctrl.rT = clamp(ctrl.rT*(1+e.deltaY*0.0012), 0.3, 60);
+},{passive:false});
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){px=e.touches[0].clientX; py=e.touches[0].clientY;}
+  else if(e.touches.length===2){pinch=tDist(e);}
+},{passive:true});
+canvas.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  if(e.touches.length===1){
+    const dx=e.touches[0].clientX-px, dy=e.touches[0].clientY-py;
+    px=e.touches[0].clientX; py=e.touches[0].clientY; rotate(dx,dy);
+  } else if(e.touches.length===2){
+    const d=tDist(e); ctrl.rT=clamp(ctrl.rT*(pinch/d),0.3,60); pinch=d;
+  }
+},{passive:false});
+function tDist(e){const a=e.touches[0],b=e.touches[1];return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}
+function rotate(dx,dy){
+  ctrl.thetaT -= dx*0.006;
+  ctrl.phiT = clamp(ctrl.phiT - dy*0.006, 0.05, Math.PI-0.05);
+}
+function pan(dx,dy){
+  const s = ctrl.r*0.0015;
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+  ctrl.panT.addScaledVector(right,-dx*s).addScaledVector(up,dy*s);
+}
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+
+/* ================= minimal GLB parser ================= */
+const COMP = {5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array};
+const NCOMP = {SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT4:16};
+
+function parseGLB(buf){
+  const dv = new DataView(buf);
+  if(dv.getUint32(0,true)!==0x46546C67) throw new Error('GLBファイルではありません');
+  let off=12, json=null, bin=null;
+  while(off < dv.getUint32(8,true)){
+    const len=dv.getUint32(off,true), type=dv.getUint32(off+4,true);
+    const chunk=buf.slice(off+8, off+8+len);
+    if(type===0x4E4F534A) json=JSON.parse(new TextDecoder().decode(chunk));
+    else if(type===0x004E4942) bin=chunk;
+    off += 8+len;
+  }
+  if(!json) throw new Error('JSONチャンクが見つかりません');
+  const req = json.extensionsRequired||[];
+  if(req.includes('KHR_draco_mesh_compression')) throw new Error('Draco圧縮GLBは非対応です(Blenderで圧縮なし再書き出しを)');
+  return buildScene(json, bin);
+}
+
+function readAcc(json, bin, i){
+  const a=json.accessors[i], bv=json.bufferViews[a.bufferView];
+  const T=COMP[a.componentType], n=NCOMP[a.type], count=a.count;
+  const stride=bv.byteStride||0, tight=T.BYTES_PER_ELEMENT*n;
+  const base=(bv.byteOffset||0)+(a.byteOffset||0);
+  let out;
+  if(stride && stride!==tight){
+    out=new T(count*n);
+    for(let e=0;e<count;e++){
+      const src=new T(bin.slice(base+e*stride, base+e*stride+tight));
+      out.set(src, e*n);
+    }
+  } else {
+    out=new T(bin.slice(base, base+count*tight));
+  }
+  if(a.componentType!==5126 && a.normalized){
+    const max=(a.componentType===5121)?255:(a.componentType===5123)?65535:127;
+    const f=new Float32Array(out.length);
+    for(let k=0;k<out.length;k++) f[k]=out[k]/max;
+    return {arr:f, n};
+  }
+  return {arr:out, n};
+}
+
+function buildScene(json, bin){
+  const texCache={}, matCache={};
+
+  function getTexture(ti){
+    if(texCache[ti]) return texCache[ti];
+    const t=json.textures[ti], img=json.images[t.source];
+    let url=null;
+    if(img.bufferView!==undefined){
+      const bv=json.bufferViews[img.bufferView];
+      const o=bv.byteOffset||0;
+      url=URL.createObjectURL(new Blob([bin.slice(o,o+bv.byteLength)],{type:img.mimeType}));
+    } else if(img.uri && img.uri.startsWith('data:')){
+      url=img.uri;
+    }
+    const tex=new THREE.Texture();
+    if(url){
+      const im=new Image();
+      im.onload=()=>{tex.image=im; tex.needsUpdate=true; if(url.startsWith('blob:'))URL.revokeObjectURL(url);};
+      im.src=url;
+    }
+    tex.flipY=false;
+    const smp=(json.samplers&&t.sampler!==undefined)?json.samplers[t.sampler]:{};
+    const WRAP={33071:THREE.ClampToEdgeWrapping,33648:THREE.MirroredRepeatWrapping,10497:THREE.RepeatWrapping};
+    tex.wrapS=WRAP[smp.wrapS]||THREE.RepeatWrapping;
+    tex.wrapT=WRAP[smp.wrapT]||THREE.RepeatWrapping;
+    texCache[ti]=tex;
+    return tex;
+  }
+
+  function getMaterial(mi, hasColor){
+    const key=mi+'_'+(hasColor?1:0);
+    if(matCache[key]) return matCache[key];
+    let mat;
+    if(mi===undefined){
+      mat=new THREE.MeshStandardMaterial({color:0x8a8a96, roughness:0.75, metalness:0.05});
+    } else {
+      const m=json.materials[mi], p=m.pbrMetallicRoughness||{};
+      const unlit=m.extensions&&m.extensions.KHR_materials_unlit;
+      const bc=p.baseColorFactor||[1,1,1,1];
+      const params={color:new THREE.Color(bc[0],bc[1],bc[2])};
+      if(unlit){ mat=new THREE.MeshBasicMaterial(params); }
+      else{
+        params.roughness=(p.roughnessFactor!==undefined)?p.roughnessFactor:1;
+        params.metalness=(p.metallicFactor!==undefined)?p.metallicFactor:1;
+        if(m.emissiveFactor) params.emissive=new THREE.Color(...m.emissiveFactor);
+        mat=new THREE.MeshStandardMaterial(params);
+      }
+      if(bc[3]<1 || m.alphaMode==='BLEND'){mat.transparent=true; mat.opacity=bc[3];}
+      if(m.alphaMode==='MASK') mat.alphaTest=(m.alphaCutoff!==undefined)?m.alphaCutoff:0.5;
+      if(m.doubleSided) mat.side=THREE.DoubleSide;
+      if(p.baseColorTexture){mat.map=getTexture(p.baseColorTexture.index); mat.map.encoding=THREE.sRGBEncoding;}
+    }
+    if(hasColor) mat.vertexColors=true;
+    matCache[key]=mat;
+    return mat;
+  }
+
+  function primToMesh(prim){
+    const g=new THREE.BufferGeometry();
+    const A=prim.attributes;
+    if(A.POSITION===undefined) return null;
+    const setA=(name, ai, force3)=>{
+      const {arr,n}=readAcc(json,bin,ai);
+      const f=(arr instanceof Float32Array)?arr:Float32Array.from(arr);
+      g.setAttribute(name, new THREE.BufferAttribute(f, force3||n));
+    };
+    setA('position', A.POSITION);
+    if(A.NORMAL!==undefined) setA('normal', A.NORMAL);
+    if(A.TEXCOORD_0!==undefined) setA('uv', A.TEXCOORD_0);
+    let hasColor=false;
+    if(A.COLOR_0!==undefined){setA('color', A.COLOR_0); hasColor=true;}
+    if(prim.indices!==undefined){
+      let {arr}=readAcc(json,bin,prim.indices);
+      if(arr instanceof Uint8Array) arr=Uint16Array.from(arr);
+      g.setIndex(new THREE.BufferAttribute(arr,1));
+    }
+    if(A.NORMAL===undefined) g.computeVertexNormals();
+    return new THREE.Mesh(g, getMaterial(prim.material, hasColor));
+  }
+
+  function nodeObj(ni){
+    const nd=json.nodes[ni], o=new THREE.Group();
+    if(nd.matrix){
+      const m=new THREE.Matrix4().fromArray(nd.matrix);
+      m.decompose(o.position,o.quaternion,o.scale);
+    } else {
+      if(nd.translation) o.position.fromArray(nd.translation);
+      if(nd.rotation) o.quaternion.fromArray(nd.rotation);
+      if(nd.scale) o.scale.fromArray(nd.scale);
+    }
+    if(nd.mesh!==undefined){
+      json.meshes[nd.mesh].primitives.forEach(p=>{
+        const mesh=primToMesh(p); if(mesh) o.add(mesh);
+      });
+    }
+    (nd.children||[]).forEach(c=>o.add(nodeObj(c)));
+    return o;
+  }
+
+  const root=new THREE.Group();
+  const sc=json.scenes[json.scene||0];
+  (sc.nodes||[]).forEach(n=>root.add(nodeObj(n)));
+  return root;
+}
+
+/* ================= archive ================= */
+/* 永続化: Claude上ではwindow.storage、自前ホスト時はIndexedDBを使用 */
+function bufToB64(buf){
+  const u=new Uint8Array(buf); let s='';
+  for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
+  return btoa(s);
+}
+function b64ToBuf(b){
+  const s=atob(b), u=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i);
+  return u.buffer;
+}
+const store=(()=>{ 
+  if(window.storage){
+    return {
+      async save(id, meta, buf){
+        const payload={meta};
+        if(buf){
+          const b64=bufToB64(buf);
+          if(b64.length>4800000) throw new Error('5MB制限を超えるため保存不可');
+          payload.b64=b64;
+        }
+        await window.storage.set('entry-'+id, JSON.stringify(payload));
+      },
+      async all(){
+        try{
+          const res=await window.storage.list('entry-');
+          const out=[];
+          for(const k of (res?res.keys:[])){
+            try{
+              const r=await window.storage.get(k);
+              if(r){const d=JSON.parse(r.value); out.push({id:k.slice(6), meta:d.meta, buf:d.b64?b64ToBuf(d.b64):null});}
+            }catch(e){}
+          }
+          return out;
+        }catch(e){return [];}
+      },
+      async remove(id){try{await window.storage.delete('entry-'+id);}catch(e){}}
+    };
+  }
+  if(window.indexedDB){
+    const db=()=>new Promise((res,rej)=>{
+      const rq=indexedDB.open('fragment-archive',1);
+      rq.onupgradeneeded=()=>rq.result.createObjectStore('e');
+      rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+    });
+    const tx=async(mode,fn)=>{
+      const d=await db();
+      return new Promise((res,rej)=>{
+        const t=d.transaction('e',mode), s=t.objectStore('e'), r=fn(s);
+        t.oncomplete=()=>res(r.result); t.onerror=()=>rej(t.error);
+      });
+    };
+    return {
+      async save(id, meta, buf){await tx('readwrite',s=>s.put({meta, buf:buf||null},id));},
+      async all(){
+        const d=await db();
+        return new Promise((res,rej)=>{
+          const out=[], c=d.transaction('e').objectStore('e').openCursor();
+          c.onsuccess=()=>{
+            const cur=c.result;
+            if(cur){out.push({id:cur.key, meta:cur.value.meta, buf:cur.value.buf}); cur.continue();}
+            else res(out);
+          };
+          c.onerror=()=>rej(c.error);
+        });
+      },
+      async remove(id){await tx('readwrite',s=>s.delete(id));}
+    };
+  }
+  return null;
+})();
+
+const rail=document.getElementById('rail');
+const entries=[];
+let current=null, seq=0;
+
+function addEntry(name, obj, source, opts){
+  opts=opts||{};
+  if(opts.acc){
+    const n=parseInt(opts.acc.split('-')[1],10);
+    if(n>seq) seq=n;
+  } else seq++;
+  // normalize: center on grid
+  const box=new THREE.Box3().setFromObject(obj);
+  const size=box.getSize(new THREE.Vector3());
+  const c=box.getCenter(new THREE.Vector3());
+  obj.position.sub(c);
+  obj.position.y += size.y/2;
+  const maxDim=Math.max(size.x,size.y,size.z)||1;
+
+  let tri=0, vtx=0; const mats=new Set();
+  obj.traverse(m=>{
+    if(m.isMesh){
+      const g=m.geometry;
+      vtx += g.attributes.position.count;
+      tri += (g.index?g.index.count:g.attributes.position.count)/3;
+      mats.add(m.material);
+      m.userData.origMat=m.material;
+    }
+  });
+
+  const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
+  const e={id:opts.id||null, acc, name, obj, tri:Math.round(tri), vtx, matN:mats.size, maxDim,
+    date:opts.date||new Date().toLocaleString('ja-JP'), source};
+  entries.push(e);
+
+  const card=document.createElement('div');
+  card.className='card'; card.tabIndex=0;
+  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source}</span></div>
+    <div class="nm">${esc(name)}</div>
+    <div class="meta"><span>△ ${e.tri.toLocaleString()}</span><span>V ${e.vtx.toLocaleString()}</span><span>${e.date}</span></div>
+    <button class="del" title="削除">×</button>`;
+  card.addEventListener('click',ev=>{
+    if(ev.target.classList.contains('del')){removeEntry(e,card);return;}
+    show(e,card);
+  });
+  card.addEventListener('keydown',ev=>{if(ev.key==='Enter')show(e,card);});
+  e.card=card;
+  rail.appendChild(card);
+  show(e,card);
+}
+
+function removeEntry(e,card){
+  if(e.id && store) store.remove(e.id);
+  if(current===e){scene.remove(e.obj); current=null;}
+  entries.splice(entries.indexOf(e),1);
+  card.remove();
+  if(entries.length) show(entries[entries.length-1], entries[entries.length-1].card);
+}
+
+function show(e,card){
+  if(current) scene.remove(current.obj);
+  current=e;
+  scene.add(e.obj);
+  applyWire();
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
+  card.classList.add('active');
+  const narrow = innerWidth/innerHeight < 0.75;
+  ctrl.panT.set(0, e.maxDim*(narrow?0.55:0.45), 0);
+  ctrl.rT = e.maxDim*(narrow?2.9:2.1);
+  ctrl.thetaT = ctrl.theta + 0.9;
+  document.getElementById('hTri').textContent=e.tri.toLocaleString();
+  document.getElementById('hVtx').textContent=e.vtx.toLocaleString();
+  document.getElementById('hMat').textContent=e.matN;
+  scene.fog.near = e.maxDim*4; scene.fog.far = e.maxDim*14;
+  brandGlitch();
+}
+function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ================= loading ================= */
+const toast=document.getElementById('toast');
+let toastT;
+function say(msg,err){
+  toast.textContent=msg;
+  toast.classList.toggle('err',!!err);
+  toast.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>toast.classList.remove('show'), 3600);
+}
+const spin=document.getElementById('spin');
+
+async function loadBuffer(buf, name, source, url){
+  spin.classList.add('show');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const obj=parseGLB(buf);
+    const id=Date.now()+'-'+Math.random().toString(36).slice(2,7);
+    addEntry(name, obj, source, {id});
+    if(store){
+      const e=entries[entries.length-1];
+      const meta={name, source, date:e.date, acc:e.acc};
+      if(url){
+        meta.url=url;
+        store.save(id, meta, null)
+          .then(()=>say(name+' を収蔵しました(URL参照・容量制限なし)'))
+          .catch(()=>say(name+' を表示しました(保存失敗)', true));
+      } else {
+        store.save(id, meta, buf)
+          .then(()=>say(name+' を収蔵しました(次回も表示されます)'))
+          .catch(err=>say(name+' を表示しました(保存不可: '+err.message+')', true));
+      }
+    } else {
+      say(name+' を表示しました(この環境では保存できません)');
+    }
+  }catch(err){
+    say('読込失敗: '+err.message, true);
+  }finally{
+    spin.classList.remove('show');
+  }
+}
+
+document.getElementById('fileBtn').onclick=()=>document.getElementById('fileIn').click();
+document.getElementById('fileIn').addEventListener('change', e=>{
+  [...e.target.files].forEach(async f=>{
+    loadBuffer(await f.arrayBuffer(), f.name.replace(/\.glb$/i,''), 'LOCAL');
+  });
+  e.target.value='';
+});
+
+const drop=document.getElementById('drop');
+addEventListener('dragover', e=>{e.preventDefault(); drop.classList.add('show');});
+drop.addEventListener('dragleave', ()=>drop.classList.remove('show'));
+addEventListener('drop', e=>{
+  e.preventDefault(); drop.classList.remove('show');
+  [...e.dataTransfer.files].filter(f=>/\.glb$/i.test(f.name)).forEach(async f=>{
+    loadBuffer(await f.arrayBuffer(), f.name.replace(/\.glb$/i,''), 'DROP');
+  });
+});
+
+document.getElementById('urlBtn').onclick=async()=>{
+  const u=document.getElementById('urlIn').value.trim();
+  if(!u) return;
+  spin.classList.add('show');
+  try{
+    const res=await fetch(u);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const buf=await res.arrayBuffer();
+    const name=decodeURIComponent(u.split('/').pop().replace(/\.glb$/i,''))||'untitled';
+    await loadBuffer(buf, name, 'URL', u);
+  }catch(err){
+    spin.classList.remove('show');
+    say('URL読込失敗(CORS制限の可能性): '+err.message, true);
+  }
+};
+
+/* ================= toggles / glitch ================= */
+const state={wire:false, rot:true, glitch:true, grid:true};
+function bindTg(id,key,fn){
+  const b=document.getElementById(id);
+  b.onclick=()=>{state[key]=!state[key]; b.classList.toggle('on',state[key]); if(fn)fn();};
+}
+bindTg('tgWire','wire',applyWire);
+bindTg('tgRot','rot');
+bindTg('tgGlitch','glitch');
+bindTg('tgGrid','grid',()=>grid.visible=state.grid);
+
+function applyWire(){
+  if(!current) return;
+  current.obj.traverse(m=>{
+    if(m.isMesh && m.material.wireframe!==undefined) m.material.wireframe=state.wire;
+  });
+}
+
+const glitchMatC=new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true});
+const glitchMatM=new THREE.MeshBasicMaterial({color:0xff3ea5, wireframe:true});
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function brandGlitch(){
+  if(reduced) return;
+  const b=document.getElementById('brand');
+  b.classList.remove('glitching'); void b.offsetWidth;
+  b.classList.add('glitching');
+}
+
+function glitchPulse(){
+  const delay=1800+Math.random()*3200;
+  setTimeout(()=>{
+    if(state.glitch && current && !reduced){
+      const gm=Math.random()<0.5?glitchMatC:glitchMatM;
+      const ox=current.obj.position.x;
+      current.obj.traverse(m=>{if(m.isMesh){m.material=gm;}});
+      current.obj.position.x=ox+(Math.random()-0.5)*0.08;
+      brandGlitch();
+      setTimeout(()=>{
+        current.obj.traverse(m=>{if(m.isMesh&&m.userData.origMat){m.material=m.userData.origMat;}});
+        current.obj.position.x=ox;
+        applyWire();
+      }, 60+Math.random()*110);
+    }
+    glitchPulse();
+  }, delay);
+}
+glitchPulse();
+
+/* ================= default specimen (procedural dress) ================= */
+function defaultSpecimen(){
+  const pts=[];
+  const prof=[[0.001,1.55],[0.11,1.52],[0.13,1.42],[0.17,1.3],[0.2,1.1],[0.19,0.95],[0.22,0.8],[0.3,0.55],[0.42,0.3],[0.52,0.12],[0.55,0.02]];
+  prof.forEach(p=>pts.push(new THREE.Vector2(p[0],p[1])));
+  const g=new THREE.LatheGeometry(pts, 48);
+  const body=new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    color:0x14141d, roughness:0.5, metalness:0.35,
+    emissive:0x0a2a26, side:THREE.DoubleSide
+  }));
+  const wire=new THREE.Mesh(g.clone().scale(1.012,1.012,1.012),
+    new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true, transparent:true, opacity:0.28}));
+  const grp=new THREE.Group();
+  grp.add(body); grp.add(wire);
+  // stardust
+  const N=500, pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const a=Math.random()*Math.PI*2, h=Math.random()*1.6, r=0.15+Math.random()*0.55;
+    pos[i*3]=Math.cos(a)*r; pos[i*3+1]=h; pos[i*3+2]=Math.sin(a)*r;
+  }
+  const pg=new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  grp.add(new THREE.Points(pg, new THREE.PointsMaterial({color:0xff3ea5,size:0.012,transparent:true,opacity:0.7})));
+  addEntry('UNTITLED DRESS / PROCEDURAL', grp, 'DEMO');
+}
+
+/* ================= loop ================= */
+function resize(){
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width));
+  const h = Math.max(1, Math.round(rect.height));
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', ()=>setTimeout(resize,300));
+if(window.visualViewport) visualViewport.addEventListener('resize', resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('touchmove', e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
+resize();
+
+function loop(){
+  requestAnimationFrame(loop);
+  if(state.rot && !ctrl.dragging) ctrl.thetaT += 0.0035;
+  applyCam();
+  renderer.render(scene,camera);
+}
+(async function init(){
+  loop();
+  let restored=0;
+  if(store){
+    try{
+      const saved=await store.all();
+      saved.sort((a,b)=>(a.meta.acc||'').localeCompare(b.meta.acc||''));
+      for(const s of saved){
+        try{
+          let buf=s.buf;
+          if(!buf && s.meta.url){
+            const res=await fetch(s.meta.url);
+            if(!res.ok) throw new Error('HTTP '+res.status);
+            buf=await res.arrayBuffer();
+          }
+          if(!buf) continue;
+          const obj=parseGLB(buf);
+          addEntry(s.meta.name, obj, s.meta.source, {id:s.id, acc:s.meta.acc, date:s.meta.date});
+          restored++;
+        }catch(e){
+          say('復元失敗: '+s.meta.name+'(URLから取得できません)', true);
+        }
+      }
+    }catch(e){}
+  }
+  if(restored===0) defaultSpecimen();
+  else say('収蔵品 '+restored+' 点を復元しました');
+})();
+</script>
+</body>
+</html>
