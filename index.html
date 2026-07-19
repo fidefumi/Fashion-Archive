@@ -125,7 +125,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.15]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.16]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -539,13 +539,17 @@ async function buildSplat(url, buf){
   const mx=med(xs),my=med(ys),mz=med(zs);
   const ds=xs.map((x,i)=>Math.hypot(x-mx,ys[i]-my,zs[i]-mz)).sort((p,q)=>p-q);
   const r=ds[Math.floor(ds.length*0.9)]||1;
-  // 旧形式(Sparkに委譲した経路)はY-downで書き出されがちなので初期反転、v4はそのまま
-  splat.userData.med={mx,my,mz};
-  applySplatOrientation(splat, !isV4);
+  // 高さ方向の実質的な端(浮遊ゴミを除くため2%/98%点)
+  const dys=ys.map(y=>y-my).sort((p,q)=>p-q);
+  const lo=dys[Math.floor(dys.length*0.02)]||0;
+  const hi=dys[Math.floor(dys.length*0.98)]||0;
+  splat.userData.med={mx,my,mz,lo,hi};
   const grp=new THREE.Group();
   grp.add(splat);
-  grp.position.y=r*0.9;
   grp.userData.splat=splat;
+  splat.userData.grp=grp;
+  // 旧形式(Sparkに委譲した経路)はY-downで書き出されがちなので初期反転、v4はそのまま
+  applySplatOrientation(splat, !isV4);
   return {obj:grp, info:{
     kind:'splat', maxDim:r*2,
     statLabel:'✳ '+n.toLocaleString()+' splats',
@@ -667,9 +671,9 @@ bindTg('tgWire','wire',applyWire);
 bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
 bindTg('tgGlitch','glitch');
 bindTg('tgGrid','grid',()=>grid.visible=state.grid);
-/* スプラットの上下向きと中心補正をセットで適用 */
+/* スプラットの上下向き・中心・接地をセットで適用 */
 function applySplatOrientation(splat, flipped){
-  const m=splat.userData.med||{mx:0,my:0,mz:0};
+  const m=splat.userData.med||{mx:0,my:0,mz:0,lo:0,hi:0};
   splat.userData.flipped=flipped;
   if(flipped){
     splat.rotation.x=Math.PI;
@@ -678,6 +682,9 @@ function applySplatOrientation(splat, flipped){
     splat.rotation.x=0;
     splat.position.set(-m.mx, -m.my, -m.mz);
   }
+  // 下端(浮遊ゴミ除外済み)がグリッド面(y=0)に接するよう持ち上げる
+  const grp=splat.userData.grp;
+  if(grp) grp.position.y = flipped ? (m.hi||0) : -(m.lo||0);
 }
 
 document.getElementById('tgFlip').onclick=()=>{
