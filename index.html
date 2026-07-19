@@ -125,7 +125,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.14]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.15]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -503,8 +503,9 @@ async function buildSplat(url, buf){
     buf=await res.arrayBuffer();
   }
   const head=new Uint8Array(buf,0,4);
+  const isV4=(head[0]===0x4e&&head[1]===0x47&&head[2]===0x53&&head[3]===0x50);
   let splat;
-  if(head[0]===0x4e&&head[1]===0x47&&head[2]===0x53&&head[3]===0x50){
+  if(isV4){
     // SPZ v4 → 自前デコード後、プロシージャル生成でSparkに渡す
     const d=parseSpzV4(buf);
     const c=new THREE.Vector3(), s=new THREE.Vector3(),
@@ -527,8 +528,6 @@ async function buildSplat(url, buf){
       setTimeout(()=>rej(new Error('読込タイムアウト(60秒)')),60000);
     });
   }
-  // 3DGSは上下逆(Y-down)で書き出されることが多いので反転
-  splat.rotation.x=Math.PI;
   // 外れ値に強い中心とサイズの推定(サンプリング)
   const n=splat.numSplats||1;
   const step=Math.max(1,Math.floor(n/20000));
@@ -540,7 +539,9 @@ async function buildSplat(url, buf){
   const mx=med(xs),my=med(ys),mz=med(zs);
   const ds=xs.map((x,i)=>Math.hypot(x-mx,ys[i]-my,zs[i]-mz)).sort((p,q)=>p-q);
   const r=ds[Math.floor(ds.length*0.9)]||1;
-  splat.position.set(-mx, my, mz); // rotation.x=πを考慮した打ち消し
+  // 旧形式(Sparkに委譲した経路)はY-downで書き出されがちなので初期反転、v4はそのまま
+  splat.userData.med={mx,my,mz};
+  applySplatOrientation(splat, !isV4);
   const grp=new THREE.Group();
   grp.add(splat);
   grp.position.y=r*0.9;
@@ -666,10 +667,23 @@ bindTg('tgWire','wire',applyWire);
 bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
 bindTg('tgGlitch','glitch');
 bindTg('tgGrid','grid',()=>grid.visible=state.grid);
+/* スプラットの上下向きと中心補正をセットで適用 */
+function applySplatOrientation(splat, flipped){
+  const m=splat.userData.med||{mx:0,my:0,mz:0};
+  splat.userData.flipped=flipped;
+  if(flipped){
+    splat.rotation.x=Math.PI;
+    splat.position.set(-m.mx, m.my, m.mz);
+  } else {
+    splat.rotation.x=0;
+    splat.position.set(-m.mx, -m.my, -m.mz);
+  }
+}
+
 document.getElementById('tgFlip').onclick=()=>{
   if(!current) return;
   const s=current.obj.userData.splat;
-  if(s){s.rotation.x = s.rotation.x===0 ? Math.PI : 0;}
+  if(s){applySplatOrientation(s, !s.userData.flipped);}
   else current.obj.rotation.x = current.obj.rotation.x===0 ? Math.PI : 0;
 };
 
