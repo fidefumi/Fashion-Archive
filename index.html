@@ -125,7 +125,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.13]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.14]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -164,7 +164,8 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.1.0/spark.module.js"
+    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.1.0/spark.module.js",
+    "fzstd": "https://cdn.jsdelivr.net/npm/fzstd@0.1.1/esm/index.mjs"
   }
 }
 </script>
@@ -175,6 +176,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+import { decompress as zstdDecompress } from 'fzstd';
 
 /* ===== 設定 =====
    一般公開時は下を true に変更(全ての編集機能がオフになり閲覧専用になります) */
@@ -434,11 +436,97 @@ async function buildGLB(buf){
   }};
 }
 
-async function buildSplat(url){
-  const splat=await new Promise((res,rej)=>{
-    const m=new SplatMesh({url, onLoad:()=>res(m)});
-    setTimeout(()=>rej(new Error('読込タイムアウト(60秒)')),60000);
-  });
+/* ===== SPZ v4 (NGSP) デコーダー =====
+   Niantic SPZ 4はZSTD 6ストリーム形式で、Spark.js 2.1.0は未対応のため自前で展開する。
+   仕様: github.com/nianticlabs/spz (検証済み: 実ファイルでデコード確認) */
+function parseSpzV4(buf){
+  const data=new Uint8Array(buf);
+  const dv=new DataView(buf);
+  const numPoints=dv.getUint32(8,true);
+  const fracBits=data[13], numStreams=data[15];
+  const tbo=dv.getUint32(16,true);
+  const toc=[];
+  for(let i=0;i<numStreams;i++){
+    toc.push({comp:Number(dv.getBigUint64(tbo+i*16,true)),
+              uncomp:Number(dv.getBigUint64(tbo+i*16+8,true))});
+  }
+  let p=tbo+numStreams*16;
+  const streams=[];
+  for(const t of toc){
+    const out=zstdDecompress(data.subarray(p,p+t.comp));
+    if(out.length!==t.uncomp) throw new Error('SPZ v4: ストリームサイズ不一致');
+    streams.push(out);
+    p+=t.comp;
+  }
+  // 順序: positions, alphas, colors, scales, rotations, sh
+  const [posB,alphaB,colorB,scaleB,rotB]=streams;
+  const posScale=1/(1<<fracBits), SH_C0=0.28209479177;
+  const positions=new Float32Array(numPoints*3);
+  const scales=new Float32Array(numPoints*3);
+  const quats=new Float32Array(numPoints*4);
+  const opacities=new Float32Array(numPoints);
+  const colors=new Float32Array(numPoints*3);
+  const shifts=[20,10,0];
+  for(let i=0;i<numPoints;i++){
+    for(let j=0;j<3;j++){
+      const o=(i*3+j)*3;
+      let f=posB[o]|(posB[o+1]<<8)|(posB[o+2]<<16);
+      if(f&0x800000) f|=0xff000000;
+      positions[i*3+j]=(f|0)*posScale;
+      scales[i*3+j]=Math.exp(scaleB[i*3+j]/16-10);
+      const dc=(colorB[i*3+j]/255-0.5)/0.15;
+      colors[i*3+j]=Math.min(1,Math.max(0,0.5+SH_C0*dc));
+    }
+    opacities[i]=alphaB[i]/255;
+    const ro=i*4;
+    const comp=(rotB[ro]|(rotB[ro+1]<<8)|(rotB[ro+2]<<16)|(rotB[ro+3]<<24))>>>0;
+    const iL=comp>>>30;
+    let sumsq=0,k=0;
+    const q=[0,0,0,0];
+    for(let j=0;j<4;j++){
+      if(j===iL) continue;
+      const field=(comp>>>shifts[k++])&0x3ff;
+      const mag=(field&0x1ff)/511*Math.SQRT1_2;
+      q[j]=(field&0x200)?-mag:mag;
+      sumsq+=q[j]*q[j];
+    }
+    q[iL]=Math.sqrt(Math.max(0,1-sumsq));
+    quats.set(q,ro);
+  }
+  return {numPoints,positions,scales,quats,opacities,colors};
+}
+
+async function buildSplat(url, buf){
+  if(!buf){
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    buf=await res.arrayBuffer();
+  }
+  const head=new Uint8Array(buf,0,4);
+  let splat;
+  if(head[0]===0x4e&&head[1]===0x47&&head[2]===0x53&&head[3]===0x50){
+    // SPZ v4 → 自前デコード後、プロシージャル生成でSparkに渡す
+    const d=parseSpzV4(buf);
+    const c=new THREE.Vector3(), s=new THREE.Vector3(),
+          q=new THREE.Quaternion(), col=new THREE.Color();
+    splat=new SplatMesh({constructSplats:(sp)=>{
+      for(let i=0;i<d.numPoints;i++){
+        c.set(d.positions[i*3],d.positions[i*3+1],d.positions[i*3+2]);
+        s.set(d.scales[i*3],d.scales[i*3+1],d.scales[i*3+2]);
+        q.set(d.quats[i*4],d.quats[i*4+1],d.quats[i*4+2],d.quats[i*4+3]);
+        col.setRGB(d.colors[i*3],d.colors[i*3+1],d.colors[i*3+2]);
+        sp.pushSplat(c,s,q,d.opacities[i],col);
+      }
+    }});
+    if(splat.initialized) await splat.initialized;
+  } else {
+    // 旧SPZ(gzip)/PLY/SPLAT等はSparkに委譲(中身から自動判別)
+    const target=(url&&SPLAT_EXTS.includes(extOf(url)))?url:URL.createObjectURL(new Blob([buf]));
+    splat=await new Promise((res,rej)=>{
+      const m=new SplatMesh({url:target, onLoad:()=>res(m)});
+      setTimeout(()=>rej(new Error('読込タイムアウト(60秒)')),60000);
+    });
+  }
   // 3DGSは上下逆(Y-down)で書き出されることが多いので反転
   splat.rotation.x=Math.PI;
   // 外れ値に強い中心とサイズの推定(サンプリング)
@@ -490,9 +578,7 @@ async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
       }
       built=await buildGLB(buf);
     } else {
-      let target=url;
-      if(!target && buf) target=URL.createObjectURL(new Blob([buf]));
-      built=await buildSplat(target);
+      built=await buildSplat(url, buf);
     }
     const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
     const opts=Object.assign({id}, restoreOpts||{}, {url:url||null, readonly:!!arguments[0].readonly});
