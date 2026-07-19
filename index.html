@@ -64,6 +64,11 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .card.active::before{content:"VIEWING";position:absolute;top:-1px;right:-1px;
   background:var(--cyan);color:#000;font-size:8px;letter-spacing:.15em;padding:2px 6px}
 .card .acc{font-size:9px;color:var(--magenta);letter-spacing:.15em}
+.card .chips{display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle}
+.card .chip{cursor:pointer;border:1px solid var(--line);color:var(--dim);font-size:8px;
+  letter-spacing:.12em;padding:1px 6px}
+.card .chip.on{color:#000;background:var(--cyan);border-color:var(--cyan)}
+.card .chip:hover{border-color:var(--cyan)}
 .card .nm{font-family:var(--disp);font-weight:700;font-size:13px;margin:3px 0 6px;word-break:break-all}
 .card .meta{font-size:9px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap}
 .card .del{position:absolute;bottom:8px;right:10px;color:var(--dim);cursor:pointer;font-size:11px;background:none;border:none;font-family:var(--mono)}
@@ -125,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.16]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.17]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -317,25 +322,78 @@ const SPLAT_EXTS=['spz','ply','splat','ksplat','sog'];
 function extOf(s){const m=(s||'').split('?')[0].toLowerCase().match(/\.([a-z0-9]+)$/);return m?m[1]:'';}
 function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
 
+function normName(s){return String(s).toLowerCase().replace(/[\s_]+/g,' ').trim();}
+
+function setVariant(e, kind, refit){
+  const v=e.variants[kind];
+  if(!v) return;
+  const wasCurrent=(current===e);
+  if(wasCurrent && e.obj) scene.remove(e.obj);
+  e.active=kind; e.obj=v.obj; e.info=v.info; e.maxDim=v.info.maxDim;
+  e.kind=kind; e.url=v.url;
+  updateChips(e);
+  const stat=e.card&&e.card.querySelector('.stat');
+  if(stat) stat.textContent=v.info.statLabel;
+  if(wasCurrent){
+    scene.add(e.obj);
+    applyWire();
+    document.getElementById('hLine1').innerHTML=v.info.hud1;
+    document.getElementById('hLine2').innerHTML=v.info.hud2;
+    if(refit) show(e, e.card);
+  }
+}
+
+function updateChips(e){
+  const box=e.card&&e.card.querySelector('.chips');
+  if(!box) return;
+  box.innerHTML='';
+  for(const k of ['glb','splat']){
+    if(!e.variants[k]) continue;
+    const c=document.createElement('span');
+    c.className='chip'+(e.active===k?' on':'');
+    c.textContent=k==='glb'?'MESH':'3DGS';
+    c.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      if(current!==e){setVariant(e,k); show(e,e.card);}
+      else setVariant(e,k); // 同一視点のまま切替(比較しやすい)
+    });
+    box.appendChild(c);
+  }
+}
+
 function addEntry(name, obj, source, info, opts){
   opts=opts||{};
+  // 同名(拡張子違い)の収蔵品があればバリアントとして統合
+  const key=normName(name);
+  const existing=entries.find(x=>x.key===key);
+  if(existing){
+    existing.variants[info.kind]={obj, info, url:opts.url||null};
+    if(opts.id) existing.recIds.push(opts.id);
+    setVariant(existing, info.kind);
+    if(current!==existing) show(existing, existing.card);
+    return;
+  }
+
   if(opts.acc){
     const n=parseInt(opts.acc.split('-')[1],10);
     if(n>seq) seq=n;
   } else seq++;
 
   const acc=opts.acc||('ACC.2026-'+String(seq).padStart(3,'0'));
-  const e={id:opts.id||null, acc, name, obj, info, maxDim:info.maxDim,
-    date:opts.date||new Date().toLocaleString('ja-JP'), source, kind:info.kind,
-    note:opts.note||'', url:opts.url||null, readonly:!!opts.readonly};
+  const e={key, acc, name, source,
+    date:opts.date||new Date().toLocaleString('ja-JP'),
+    note:opts.note||'', readonly:!!opts.readonly,
+    variants:{}, active:info.kind, recIds:opts.id?[opts.id]:[],
+    obj, info, maxDim:info.maxDim, kind:info.kind, url:opts.url||null};
+  e.variants[info.kind]={obj, info, url:opts.url||null};
+  e.id=opts.id||null;
   entries.push(e);
 
   const card=document.createElement('div');
   card.className='card'; card.tabIndex=0;
-  const badge=info.kind==='splat'?'3DGS':'MESH';
-  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source} / ${badge}</span></div>
+  card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source}</span> <span class="chips"></span></div>
     <div class="nm">${esc(name)}</div>
-    <div class="meta"><span>${esc(info.statLabel)}</span><span>${e.date}</span></div>
+    <div class="meta"><span class="stat">${esc(info.statLabel)}</span><span>${e.date}</span></div>
     <div class="note"></div>
     ${e.readonly?'':'<button class="del" title="削除">×</button>'}`;
   const noteEl=card.querySelector('.note');
@@ -369,14 +427,17 @@ function addEntry(name, obj, source, info, opts){
   });
   card.addEventListener('keydown',ev=>{if(ev.key==='Enter')show(e,card);});
   e.card=card;
+  updateChips(e);
   rail.appendChild(card);
   show(e,card);
 }
 
 function removeEntry(e,card){
-  if(e.id && store) store.remove(e.id);
+  if(store) e.recIds.forEach(id=>store.remove(id));
   if(current===e){scene.remove(e.obj); current=null;}
-  e.obj.traverse(o=>{if(o.dispose)try{o.dispose();}catch(x){}});
+  for(const k in e.variants){
+    e.variants[k].obj.traverse(o=>{if(o.dispose)try{o.dispose();}catch(x){}});
+  }
   entries.splice(entries.indexOf(e),1);
   card.remove();
   if(entries.length){const last=entries[entries.length-1]; show(last,last.card);}
@@ -646,9 +707,15 @@ document.getElementById('urlBtn').onclick=async()=>{
 
 /* 公開用コレクションの書き出し */
 document.getElementById('expBtn').onclick=()=>{
-  const pub=entries.filter(e=>e.url).map(e=>({
-    name:e.name, url:e.url, acc:e.acc, note:e.note||'', date:e.date
-  }));
+  const pub=[];
+  let skipped=0;
+  for(const e of entries){
+    for(const k in e.variants){
+      const v=e.variants[k];
+      if(v.url) pub.push({name:e.name, url:v.url, acc:e.acc, note:e.note||'', date:e.date});
+      else if(e.source!=='DEMO') skipped++;
+    }
+  }
   if(!pub.length){say('URL読込した収蔵品がありません(ローカル読込のみは書き出せません)', true); return;}
   const blob=new Blob([JSON.stringify(pub,null,2)],{type:'application/json'});
   const a=document.createElement('a');
@@ -656,7 +723,6 @@ document.getElementById('expBtn').onclick=()=>{
   a.download='collection.json';
   a.click();
   URL.revokeObjectURL(a.href);
-  const skipped=entries.filter(e=>!e.url && e.source!=='DEMO').length;
   say('collection.json を保存しました('+pub.length+'点)。リポジトリにアップすると公開コレクションになります'
     +(skipped?'。ローカル読込の'+skipped+'点はURLがないため対象外':''));
 };
@@ -696,7 +762,15 @@ document.getElementById('tgFlip').onclick=()=>{
 
 document.getElementById('tgAR').onclick=async()=>{
   if(!current) return;
-  if(current.kind!=='glb'){say('ARはGLB(メッシュ)のみ対応です。3DGSはAR表示できません', true); return;}
+  if(current.kind!=='glb'){
+    if(current.variants && current.variants.glb){
+      setVariant(current,'glb');
+      say('MESH版に切り替えてARを起動します');
+    } else {
+      say('ARはGLB(メッシュ)のみ対応です。3DGSはAR表示できません', true);
+      return;
+    }
+  }
   const ua=navigator.userAgent;
   const isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   const isAndroid=/Android/.test(ua);
