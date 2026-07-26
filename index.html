@@ -133,7 +133,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.29]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.31]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -186,12 +186,15 @@ import { decompress as zstdDecompress } from 'fzstd';
 const READ_ONLY = false;
 /* AR(Quick Look)での明るさ補正: 暗ければ数値を上げる(0=補正なし / 目安 0.1〜0.4) */
 const AR_LIFT = 0.22;
+/* 端末に応じたメモリ設定 */
+const IS_MOBILE = /iPhone|iPad|iPod|Android/.test(navigator.userAgent) || matchMedia('(max-width:720px)').matches;
+const MAX_TEX = 2048;   // これを超えるテクスチャは2048pxに自動縮小(端末共通)
 if(READ_ONLY) document.documentElement.classList.add('readonly');
 
 /* ================= renderer / scene ================= */
 const canvas = document.getElementById('gl');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_MOBILE?1.5:2));
 renderer.setClearColor(0x0b0b10);
 
 const scene = new THREE.Scene();
@@ -327,7 +330,7 @@ function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
 function normName(s){return String(s).toLowerCase().replace(/[\s_]+/g,' ').trim();}
 
 /* ---- 端末メモリ対策: 同時に保持するモデル数の上限 ---- */
-const MAX_LOADED=3;
+const MAX_LOADED=IS_MOBILE?1:3;
 const loadOrder=[];
 
 function disposeVariant(v){
@@ -545,6 +548,38 @@ function show(e,card){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 /* ================= builders ================= */
+/* 大きすぎるテクスチャを縮小してGPUメモリを節約(8K→1K で約1/64) */
+function downscaleTextures(root){
+  const seen=new Set();
+  let shrunk=0;
+  root.traverse(o=>{
+    if(!o.isMesh||!o.material) return;
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats){
+      for(const k of ['map','emissiveMap','normalMap','roughnessMap','metalnessMap','aoMap','alphaMap','specularMap']){
+        const t=m[k];
+        if(!t||!t.image||seen.has(t)) continue;
+        seen.add(t);
+        const img=t.image;
+        const w=img.width|0, h=img.height|0;
+        const mx=Math.max(w,h);
+        if(!mx||mx<=MAX_TEX) continue;
+        const s=MAX_TEX/mx;
+        const cv=document.createElement('canvas');
+        cv.width=Math.max(1,Math.round(w*s));
+        cv.height=Math.max(1,Math.round(h*s));
+        try{
+          cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+        }catch(e){ continue; }
+        t.image=cv; t.needsUpdate=true;
+        if(img.close){try{img.close();}catch(e){}}
+        shrunk++;
+      }
+    }
+  });
+  return shrunk;
+}
+
 /* GLBを現在の軸補正で再配置し、最大寸法を返す */
 /* 最大寸法を人が読める形に(1未満はm、大きい値はcm相当とみなす) */
 function fmtH(v){
@@ -569,6 +604,7 @@ async function buildGLB(buf){
   const obj=gltf.scene;
   const grp=new THREE.Group(); grp.add(obj);
   grp.userData.inner=obj; grp.userData.rotX=0;
+  downscaleTextures(obj);
   if(gltf.animations && gltf.animations.length){
     const mixer=new THREE.AnimationMixer(obj);
     grp.userData.mixer=mixer;
