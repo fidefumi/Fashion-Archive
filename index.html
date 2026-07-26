@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.26]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.27]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -363,7 +363,7 @@ async function fetchBuf(url, tries){
   let last;
   for(let i=0;i<tries;i++){
     try{
-      const res=await fetch(url,{cache:'force-cache'});
+      const res=await fetch(url,{cache:'default'});
       if(!res.ok) throw new Error('HTTP '+res.status);
       return await res.arrayBuffer();
     }catch(err){
