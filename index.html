@@ -133,7 +133,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.28]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.29]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -184,6 +184,8 @@ import { decompress as zstdDecompress } from 'fzstd';
 /* ===== 設定 =====
    一般公開時は下を true に変更(全ての編集機能がオフになり閲覧専用になります) */
 const READ_ONLY = false;
+/* AR(Quick Look)での明るさ補正: 暗ければ数値を上げる(0=補正なし / 目安 0.1〜0.4) */
+const AR_LIFT = 0.22;
 if(READ_ONLY) document.documentElement.classList.add('readonly');
 
 /* ================= renderer / scene ================= */
@@ -888,6 +890,17 @@ document.getElementById('tgAR').onclick=async()=>{
         let mat;
         if(src0 && src0.isMeshStandardMaterial){
           mat=src0.clone(); mat.wireframe=false;
+          // Quick Lookは環境光が弱く暗く沈むため、金属度を抑えて自己発光を少し足す
+          mat.metalness=Math.min(mat.metalness, 0.1);
+          mat.roughness=Math.min(Math.max(mat.roughness, 0.35), 0.9);
+          if(mat.map){
+            mat.emissiveMap=mat.map;
+            mat.emissive=new THREE.Color(0xffffff);
+            mat.emissiveIntensity=AR_LIFT;
+          } else if(mat.color){
+            mat.emissive=mat.color.clone();
+            mat.emissiveIntensity=AR_LIFT;
+          }
         } else {
           mat=new THREE.MeshStandardMaterial({
             color:(src0&&src0.color)?src0.color.clone():new THREE.Color(0xffffff),
