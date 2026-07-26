@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.22]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.23]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -979,6 +979,14 @@ renderer.setAnimationLoop(()=>{
 (async function init(){
   let shown=0;
   const pubUrls=new Set();
+  // URLに ?reset を付けて開くと、この端末の個人収蔵だけを全消去(公開分は消えない)
+  if(store && new URLSearchParams(location.search).has('reset')){
+    try{
+      const saved=await store.all();
+      for(const s of saved) await store.remove(s.id);
+      say('この端末の個人収蔵('+saved.length+'点)を消去しました');
+    }catch(e){}
+  }
   // 公開コレクション(collection.jsonがあれば全訪問者に表示)
   try{
     const r=await fetch('collection.json',{cache:'no-store'});
