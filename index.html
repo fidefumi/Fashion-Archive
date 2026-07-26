@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.25]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.26]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -916,28 +916,34 @@ document.getElementById('tgAR').onclick=async()=>{
       const src=current.obj;
       // グリッチ差し替え中のマテリアルを元に戻す
       src.traverse(m=>{if(m.isMesh&&m.userData.origMat) m.material=m.userData.origMat;});
-      const clone=src.clone(true);
+      src.updateMatrixWorld(true);
+      // clone()は内部データをJSON化して循環参照で失敗するため、書き出し用に組み直す
+      const exportRoot=new THREE.Group();
+      let meshCount=0;
+      src.traverse(o=>{
+        if(!o.isMesh || !o.geometry) return;
+        const src0=Array.isArray(o.material)?o.material[0]:o.material;
+        let mat;
+        if(src0 && src0.isMeshStandardMaterial){
+          mat=src0.clone(); mat.wireframe=false;
+        } else {
+          mat=new THREE.MeshStandardMaterial({
+            color:(src0&&src0.color)?src0.color.clone():new THREE.Color(0xffffff),
+            map:(src0&&src0.map)||null, side:THREE.DoubleSide});
+        }
+        const m=new THREE.Mesh(o.geometry, mat);
+        m.applyMatrix4(o.matrixWorld);
+        exportRoot.add(m);
+        meshCount++;
+      });
+      if(!meshCount) throw new Error('書き出せるメッシュがありません');
       // 単位補正: 寸法が10を超えるものはcm単位とみなしてメートルへ
       const cm=current.maxDim>10;
-      clone.scale.multiplyScalar(cm?0.01:1);
-      clone.updateMatrixWorld(true);
-      let skipped=0;
-      clone.traverse(m=>{
-        if(!m.isMesh||!m.material) return;
-        const mats=Array.isArray(m.material)?m.material:[m.material];
-        m.material=mats.map(mt=>{
-          if(mt.isMeshStandardMaterial){
-            const c=mt.clone(); c.wireframe=false; return c;
-          }
-          skipped++;
-          const c=new THREE.MeshStandardMaterial({color:mt.color||0xffffff, map:mt.map||null});
-          return c;
-        });
-        if(m.material.length===1) m.material=m.material[0];
-      });
+      exportRoot.scale.multiplyScalar(cm?0.01:1);
+      exportRoot.updateMatrixWorld(true);
       say('AR用データに変換中…'+(cm?'(cm→m に補正)':''));
       const exporter=new USDZExporter();
-      const data=await exporter.parseAsync(clone);
+      const data=await exporter.parseAsync(exportRoot);
       const blob=new Blob([data],{type:'model/vnd.usdz+zip'});
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');
