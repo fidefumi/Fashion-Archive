@@ -89,10 +89,12 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .tg.on{color:var(--cyan);border-color:var(--cyan)}
 .tg:focus-visible{outline:1px solid var(--cyan);outline-offset:2px}
 
-.drop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
-  background:rgba(11,11,16,.85);border:2px dashed var(--cyan)}
-.drop.show{display:flex}
-.drop p{font-family:var(--disp);font-weight:800;font-size:24px;color:var(--cyan);letter-spacing:.06em;text-align:center}
+.arbtn{position:fixed;z-index:16;cursor:pointer;font-family:var(--disp);font-weight:800;
+  letter-spacing:.08em;font-size:16px;color:#000;background:var(--magenta);border:none;
+  padding:14px 28px;border-radius:999px;box-shadow:0 4px 20px rgba(255,62,165,.35)}
+.arbtn:active{transform:scale(.96)}
+.arbtn{right:20px;bottom:20px}
+@media(min-width:721px){.arbtn{right:20px;bottom:64px}}
 .toast{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:50;
   background:var(--panel);border:1px solid var(--line);padding:10px 16px;font-size:11px;
   opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;backdrop-filter:blur(6px)}
@@ -109,14 +111,15 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 .readonly .card .note{cursor:default}
 
 @media(max-width:720px){
-  header{flex-wrap:wrap;gap:8px;padding:10px 12px}
-  input[type=url]{flex:1 1 100%}
-  aside{top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:8px;right:56px;width:auto;max-height:32vh;
+  header{padding:10px 12px}
+  .loadbar{display:none}
+  .brand{font-size:17px}
+  aside{top:auto;bottom:calc(96px + env(safe-area-inset-bottom,0px));left:8px;right:8px;width:auto;max-height:30vh;
     flex-direction:row;overflow-x:auto;overflow-y:hidden}
-  .card{min-width:200px;flex:0 0 auto}
-  .toggles{left:auto;right:8px;bottom:auto;top:50%;transform:translateY(-50%);
-    flex-direction:column;gap:6px}
-  .tg{padding:8px 6px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:9px}
+  .card{min-width:210px;flex:0 0 auto}
+  .toggles{left:8px;bottom:calc(20px + env(safe-area-inset-bottom,0px));flex-direction:row}
+  .tg{padding:10px 12px;font-size:10px}
+  .arbtn{bottom:calc(16px + env(safe-area-inset-bottom,0px));padding:16px 30px;font-size:18px}
   .hud{display:none}
 }
 @media(prefers-reduced-motion:reduce){
@@ -130,14 +133,12 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.27]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.28]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
     <button class="btn" id="urlBtn">URL読込</button>
-    <button class="btn mg" id="fileBtn">ファイル選択</button>
     <button class="btn" id="expBtn" title="公開用コレクションを書き出す">書き出し</button>
-    <input type="file" id="fileIn" accept=".glb,.spz,.ply,.splat,.ksplat,.sog" multiple hidden>
   </div>
 </header>
 
@@ -148,13 +149,9 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 <div class="toggles">
   <button class="tg" id="tgWire">WIREFRAME</button>
   <button class="tg on" id="tgRot">AUTO-ROTATE</button>
-  <button class="tg on" id="tgGlitch">GLITCH</button>
-  <button class="tg on" id="tgGrid">GRID</button>
-  <button class="tg on" id="tgSide">2-SIDED</button>
-  <button class="tg" id="tgAxis">AXIS 90°</button>
   <button class="tg" id="tgPlay" style="display:none">▶ PLAY</button>
-  <button class="tg" id="tgAR" style="color:var(--magenta);border-color:var(--magenta)">AR</button>
 </div>
+<button class="arbtn" id="tgAR">AR</button>
 
 <div class="hud" id="hud">
   <div class="lbl">SPECIMEN DATA</div>
@@ -162,7 +159,6 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
   <div id="hLine2">–</div>
 </div>
 
-<div class="drop" id="drop"><p>DROP FILE HERE<br><span style="font-size:11px;font-family:var(--mono);letter-spacing:.2em">.GLB / .SPZ / .PLY / .SPLAT</span></p></div>
 <div class="spin" id="spin"><div id="spinTxt">DECODING…</div></div>
 <div class="toast" id="toast"></div>
 
@@ -765,30 +761,6 @@ async function loadAny({buf, url, name, source, ext, persist, readonly, restoreO
   }
 }
 
-document.getElementById('fileBtn').onclick=()=>{if(!READ_ONLY)document.getElementById('fileIn').click();};
-document.getElementById('fileIn').addEventListener('change', async e=>{
-  if(READ_ONLY) return;
-  for(const f of [...e.target.files]){
-    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
-      source:'LOCAL', ext:extOf(f.name), persist:true});
-  }
-  e.target.value='';
-});
-
-const drop=document.getElementById('drop');
-addEventListener('dragover', e=>{e.preventDefault(); if(!READ_ONLY)drop.classList.add('show');});
-drop.addEventListener('dragleave', ()=>drop.classList.remove('show'));
-addEventListener('drop', async e=>{
-  e.preventDefault(); drop.classList.remove('show');
-  if(READ_ONLY) return;
-  for(const f of [...e.dataTransfer.files]){
-    const ext=extOf(f.name);
-    if(ext!=='glb' && !SPLAT_EXTS.includes(ext)) continue;
-    await loadAny({buf:await f.arrayBuffer(), name:f.name.replace(/\.[a-z0-9]+$/i,''),
-      source:'DROP', ext, persist:true});
-  }
-});
-
 document.getElementById('urlBtn').onclick=async()=>{
   if(READ_ONLY) return;
   const u=document.getElementById('urlIn').value.trim();
@@ -820,16 +792,13 @@ document.getElementById('expBtn').onclick=()=>{
 };
 
 /* ================= toggles / glitch ================= */
-const state={wire:false, rot:true, glitch:true, grid:true, dbl:true};
+const state={wire:false, rot:true, dbl:true};  // 両面表示・グリッドは常時オン
 function bindTg(id,key,fn){
   const b=document.getElementById(id);
   b.onclick=()=>{state[key]=!state[key]; b.classList.toggle('on',state[key]); if(fn)fn();};
 }
 bindTg('tgWire','wire',applyWire);
-bindTg('tgSide','dbl',applyWire);
 bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
-bindTg('tgGlitch','glitch');
-bindTg('tgGrid','grid',()=>grid.visible=state.grid);
 /* スプラットの軸補正・中心・接地をまとめて適用し、最大寸法を返す */
 function applySplatOrientation(splat, rotX){
   const s=splat.userData.samples||{xs:[0],ys:[0],zs:[0]};
@@ -868,11 +837,6 @@ function setRotX(e, rotX){
   show(e, e.card);
 }
 
-document.getElementById('tgAxis').onclick=()=>{
-  if(!current) return;
-  const v=current.variants[current.active];
-  setRotX(current, (v.rotX||0)+Math.PI/2);
-};
 
 /* アニメーション再生 */
 const playBtn=document.getElementById('tgPlay');
@@ -909,8 +873,6 @@ document.getElementById('tgAR').onclick=async()=>{
   const isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   const isAndroid=/Android/.test(ua);
   if(isIOS){
-    const wasGlitch=state.glitch;
-    state.glitch=false;
     try{
       const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
       const src=current.obj;
@@ -955,8 +917,6 @@ document.getElementById('tgAR').onclick=async()=>{
     }catch(err){
       console.error(err);
       say('AR変換失敗: '+(err&&err.message?err.message:err), true);
-    }finally{
-      state.glitch=wasGlitch;
     }
   } else if(isAndroid){
     if(!current.url){say('AndroidのARはURL収蔵したGLBのみ対応です', true); return;}
@@ -984,8 +944,6 @@ function applyWire(){
   });
 }
 
-const glitchMatC=new THREE.MeshBasicMaterial({color:0x58f6e0, wireframe:true});
-const glitchMatM=new THREE.MeshBasicMaterial({color:0xff3ea5, wireframe:true});
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function brandGlitch(){
@@ -995,33 +953,6 @@ function brandGlitch(){
   b.classList.add('glitching');
 }
 
-function glitchPulse(){
-  const delay=1800+Math.random()*3200;
-  setTimeout(()=>{
-    if(state.glitch && current && !reduced){
-      const splat=current.obj.userData.splat;
-      const ox=current.obj.position.x;
-      if(splat){
-        splat.recolor=new THREE.Color(Math.random()<0.5?0x58f6e0:0xff3ea5);
-      } else {
-        const gm=Math.random()<0.5?glitchMatC:glitchMatM;
-        current.obj.traverse(m=>{if(m.isMesh){m.material=gm;}});
-      }
-      current.obj.position.x=ox+(Math.random()-0.5)*current.maxDim*0.03;
-      brandGlitch();
-      setTimeout(()=>{
-        if(!current) return;
-        const sp=current.obj.userData.splat;
-        if(sp){sp.recolor=new THREE.Color(0xffffff);}
-        else current.obj.traverse(m=>{if(m.isMesh&&m.userData.origMat){m.material=m.userData.origMat;}});
-        current.obj.position.x=ox;
-        applyWire();
-      }, 60+Math.random()*110);
-    }
-    glitchPulse();
-  }, delay);
-}
-glitchPulse();
 
 /* ================= default specimen ================= */
 function defaultSpecimen(){
