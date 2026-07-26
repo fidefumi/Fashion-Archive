@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.23]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.24]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -835,11 +835,35 @@ document.getElementById('tgAR').onclick=async()=>{
   const isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   const isAndroid=/Android/.test(ua);
   if(isIOS){
-    say('AR用データに変換中…');
+    const wasGlitch=state.glitch;
+    state.glitch=false;
     try{
       const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
+      const src=current.obj;
+      // グリッチ差し替え中のマテリアルを元に戻す
+      src.traverse(m=>{if(m.isMesh&&m.userData.origMat) m.material=m.userData.origMat;});
+      const clone=src.clone(true);
+      // 単位補正: 寸法が10を超えるものはcm単位とみなしてメートルへ
+      const cm=current.maxDim>10;
+      clone.scale.multiplyScalar(cm?0.01:1);
+      clone.updateMatrixWorld(true);
+      let skipped=0;
+      clone.traverse(m=>{
+        if(!m.isMesh||!m.material) return;
+        const mats=Array.isArray(m.material)?m.material:[m.material];
+        m.material=mats.map(mt=>{
+          if(mt.isMeshStandardMaterial){
+            const c=mt.clone(); c.wireframe=false; return c;
+          }
+          skipped++;
+          const c=new THREE.MeshStandardMaterial({color:mt.color||0xffffff, map:mt.map||null});
+          return c;
+        });
+        if(m.material.length===1) m.material=m.material[0];
+      });
+      say('AR用データに変換中…'+(cm?'(cm→m に補正)':''));
       const exporter=new USDZExporter();
-      const data=await exporter.parseAsync(current.obj);
+      const data=await exporter.parseAsync(clone);
       const blob=new Blob([data],{type:'model/vnd.usdz+zip'});
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');
@@ -849,7 +873,10 @@ document.getElementById('tgAR').onclick=async()=>{
       a.click();
       setTimeout(()=>{a.remove(); URL.revokeObjectURL(url);}, 60000);
     }catch(err){
+      console.error(err);
       say('AR変換失敗: '+(err&&err.message?err.message:err), true);
+    }finally{
+      state.glitch=wasGlitch;
     }
   } else if(isAndroid){
     if(!current.url){say('AndroidのARはURL収蔵したGLBのみ対応です', true); return;}
