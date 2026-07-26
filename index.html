@@ -133,7 +133,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.31]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.32]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -349,9 +349,10 @@ function disposeVariant(v){
   v.obj=null; v.info=null; v.loaded=false;
 }
 
-function trimLoaded(){
+function trimLoaded(protect){
   while(loadOrder.length>MAX_LOADED){
-    const i=loadOrder.findIndex(it=>!(current&&current.variants[it.kind]===it.v));
+    // 表示中のものと、いま読み込んだばかりのものは解放しない
+    const i=loadOrder.findIndex(it=> it.v!==protect && !(current&&current.variants[it.kind]===it.v));
     if(i<0) break;
     const it=loadOrder.splice(i,1)[0];
     disposeVariant(it.v);
@@ -391,7 +392,7 @@ async function ensureLoaded(e, kind){
     }
     v.obj=built.obj; v.info=built.info; v.loaded=true;
     loadOrder.push({e,v,kind});
-    trimLoaded();
+    trimLoaded(v);
     return true;
   }catch(err){
     console.error(err);
@@ -449,7 +450,7 @@ function addEntry(name, source, kind, opts){
   if(existing){
     existing.variants[kind]=vdata;
     if(opts.id) existing.recIds.push(opts.id);
-    if(vdata.loaded){loadOrder.push({e:existing,v:vdata,kind}); trimLoaded();}
+    if(vdata.loaded){loadOrder.push({e:existing,v:vdata,kind}); trimLoaded(vdata);}
     updateChips(existing);
     return existing;
   }
@@ -468,7 +469,7 @@ function addEntry(name, source, kind, opts){
   e.variants[kind]=vdata;
   e.id=opts.id||null;
   entries.push(e);
-  if(vdata.loaded){loadOrder.push({e,v:vdata,kind}); trimLoaded();}
+  if(vdata.loaded){loadOrder.push({e,v:vdata,kind}); trimLoaded(vdata);}
 
   const card=document.createElement('div');
   card.className='card'; card.tabIndex=0;
@@ -524,7 +525,8 @@ function removeEntry(e,card){
 }
 
 function show(e,card){
-  if(current) scene.remove(current.obj);
+  if(!e.obj) return;
+  if(current && current.obj) scene.remove(current.obj);
   current=e;
   scene.add(e.obj);
   applyWire();
