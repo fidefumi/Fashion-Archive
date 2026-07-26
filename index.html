@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.24]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.25]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -328,9 +328,89 @@ function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
 
 function normName(s){return String(s).toLowerCase().replace(/[\s_]+/g,' ').trim();}
 
+/* ---- 端末メモリ対策: 同時に保持するモデル数の上限 ---- */
+const MAX_LOADED=3;
+const loadOrder=[];
+
+function disposeVariant(v){
+  if(!v.obj) return;
+  try{
+    v.obj.traverse(o=>{
+      if(o.geometry && o.geometry.dispose) o.geometry.dispose();
+      const mats=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+      for(const m of mats){
+        for(const k in m){const t=m[k]; if(t&&t.isTexture&&t.dispose) t.dispose();}
+        if(m.dispose) m.dispose();
+      }
+      if(!o.geometry && o.dispose) o.dispose();
+    });
+  }catch(e){}
+  v.obj=null; v.info=null; v.loaded=false;
+}
+
+function trimLoaded(){
+  while(loadOrder.length>MAX_LOADED){
+    const i=loadOrder.findIndex(it=>!(current&&current.variants[it.kind]===it.v));
+    if(i<0) break;
+    const it=loadOrder.splice(i,1)[0];
+    disposeVariant(it.v);
+    updateChips(it.e);
+  }
+}
+
+async function fetchBuf(url, tries){
+  tries=tries||3;
+  let last;
+  for(let i=0;i<tries;i++){
+    try{
+      const res=await fetch(url,{cache:'force-cache'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.arrayBuffer();
+    }catch(err){
+      last=err;
+      await new Promise(r=>setTimeout(r, 700*(i+1)));
+    }
+  }
+  throw last;
+}
+
+/* 必要になった時点で初めて読み込む(遅延読み込み) */
+async function ensureLoaded(e, kind){
+  const v=e.variants[kind];
+  if(!v) return false;
+  if(v.loaded) return true;
+  spin.classList.add('show');
+  try{
+    const built = (kind==='glb')
+      ? await buildGLB(v.buf||await fetchBuf(v.url))
+      : await buildSplat(v.url, v.buf);
+    if(v.rotX){
+      if(kind==='splat') built.info.maxDim=applySplatOrientation(built.obj.userData.splat, v.rotX);
+      else {built.obj.userData.rotX=v.rotX; built.info.maxDim=fitGLB(built.obj);}
+    }
+    v.obj=built.obj; v.info=built.info; v.loaded=true;
+    loadOrder.push({e,v,kind});
+    trimLoaded();
+    return true;
+  }catch(err){
+    console.error(err);
+    say('読込失敗: '+(err&&err.message?err.message:err), true);
+    return false;
+  }finally{
+    spin.classList.remove('show');
+  }
+}
+
+async function openEntry(e, kind){
+  kind=kind||e.active||Object.keys(e.variants)[0];
+  if(!await ensureLoaded(e,kind)) return;
+  setVariant(e,kind);
+  if(current!==e) show(e,e.card);
+}
+
 function setVariant(e, kind){
   const v=e.variants[kind];
-  if(!v) return;
+  if(!v||!v.loaded) return;
   const wasCurrent=(current===e);
   if(wasCurrent && e.obj) scene.remove(e.obj);
   e.active=kind; e.obj=v.obj; e.info=v.info; e.maxDim=v.info.maxDim;
@@ -339,8 +419,8 @@ function setVariant(e, kind){
   const stat=e.card&&e.card.querySelector('.stat');
   if(stat) stat.textContent=v.info.statLabel;
   if(wasCurrent){
-    current=null;          // 新オブジェクトはまだシーン外
-    show(e, e.card);       // 視線方向は保ったまま距離とグリッドを再調整
+    current=null;
+    show(e, e.card);
   }
 }
 
@@ -353,26 +433,24 @@ function updateChips(e){
     const c=document.createElement('span');
     c.className='chip'+(e.active===k?' on':'');
     c.textContent=k==='glb'?'MESH':'3DGS';
-    c.addEventListener('click',ev=>{
-      ev.stopPropagation();
-      setVariant(e,k);
-      if(current!==e) show(e,e.card);
-    });
+    c.addEventListener('click',ev=>{ev.stopPropagation(); openEntry(e,k);});
     box.appendChild(c);
   }
 }
 
-function addEntry(name, obj, source, info, opts){
+function addEntry(name, source, kind, opts){
   opts=opts||{};
-  // 同名(拡張子違い)の収蔵品があればバリアントとして統合
+  const vdata={url:opts.url||null, ext:opts.ext||null, rotX:opts.rotX||0,
+    id:opts.id||null, buf:opts.buf||null,
+    obj:opts.obj||null, info:opts.info||null, loaded:!!opts.obj};
   const key=normName(name);
   const existing=entries.find(x=>x.key===key);
   if(existing){
-    existing.variants[info.kind]={obj, info, url:opts.url||null, id:opts.id||null, rotX:opts.rotX||0};
+    existing.variants[kind]=vdata;
     if(opts.id) existing.recIds.push(opts.id);
-    setVariant(existing, info.kind);
-    if(current!==existing) show(existing, existing.card);
-    return;
+    if(vdata.loaded){loadOrder.push({e:existing,v:vdata,kind}); trimLoaded();}
+    updateChips(existing);
+    return existing;
   }
 
   if(opts.acc){
@@ -384,17 +462,18 @@ function addEntry(name, obj, source, info, opts){
   const e={key, acc, name, source,
     date:opts.date||new Date().toLocaleString('ja-JP'),
     note:opts.note||'', readonly:!!opts.readonly,
-    variants:{}, active:info.kind, recIds:opts.id?[opts.id]:[],
-    obj, info, maxDim:info.maxDim, kind:info.kind, url:opts.url||null};
-  e.variants[info.kind]={obj, info, url:opts.url||null, id:opts.id||null, rotX:opts.rotX||0};
+    variants:{}, active:null, recIds:opts.id?[opts.id]:[],
+    obj:null, info:null, maxDim:1, kind:null, url:opts.url||null};
+  e.variants[kind]=vdata;
   e.id=opts.id||null;
   entries.push(e);
+  if(vdata.loaded){loadOrder.push({e,v:vdata,kind}); trimLoaded();}
 
   const card=document.createElement('div');
   card.className='card'; card.tabIndex=0;
   card.innerHTML=`<div class="acc">${acc} <span style="color:var(--dim)">/ ${source}</span> <span class="chips"></span></div>
     <div class="nm">${esc(name)}</div>
-    <div class="meta"><span class="stat">${esc(info.statLabel)}</span><span>${e.date}</span></div>
+    <div class="meta"><span class="stat">${opts.info?esc(opts.info.statLabel):'タップで読込'}</span><span>${e.date}</span></div>
     <div class="note"></div>
     ${e.readonly?'':'<button class="del" title="削除">×</button>'}`;
   const noteEl=card.querySelector('.note');
@@ -424,24 +503,23 @@ function addEntry(name, obj, source, info, opts){
   });
   card.addEventListener('click',ev=>{
     if(ev.target.classList.contains('del')){removeEntry(e,card);return;}
-    show(e,card);
+    openEntry(e);
   });
-  card.addEventListener('keydown',ev=>{if(ev.key==='Enter')show(e,card);});
+  card.addEventListener('keydown',ev=>{if(ev.key==='Enter')openEntry(e);});
   e.card=card;
   updateChips(e);
   rail.appendChild(card);
-  show(e,card);
+  return e;
 }
 
 function removeEntry(e,card){
   if(store) e.recIds.forEach(id=>store.remove(id));
-  if(current===e){scene.remove(e.obj); current=null;}
-  for(const k in e.variants){
-    e.variants[k].obj.traverse(o=>{if(o.dispose)try{o.dispose();}catch(x){}});
-  }
+  if(current===e){if(e.obj) scene.remove(e.obj); current=null;}
+  for(const k in e.variants) disposeVariant(e.variants[k]);
+  for(let i=loadOrder.length-1;i>=0;i--) if(loadOrder[i].e===e) loadOrder.splice(i,1);
   entries.splice(entries.indexOf(e),1);
   card.remove();
-  if(entries.length){const last=entries[entries.length-1]; show(last,last.card);}
+  if(entries.length) openEntry(entries[entries.length-1]);
 }
 
 function show(e,card){
@@ -645,32 +723,27 @@ function say(msg,err){
 }
 const spin=document.getElementById('spin');
 
-async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
+async function loadAny({buf, url, name, source, ext, persist, readonly, restoreOpts}){
   spin.classList.add('show');
   try{
     const kind=kindOf(ext);
-    let built;
-    if(kind==='glb'){
-      if(!buf){
-        const res=await fetch(url);
-        if(!res.ok) throw new Error('HTTP '+res.status);
-        buf=await res.arrayBuffer();
-      }
-      built=await buildGLB(buf);
-    } else {
-      built=await buildSplat(url, buf);
-    }
+    const built = (kind==='glb')
+      ? await buildGLB(buf||await fetchBuf(url))
+      : await buildSplat(url, buf);
     const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
     const rotX=(restoreOpts&&restoreOpts.rotX)||0;
     if(rotX){
-      if(built.info.kind==='splat') built.info.maxDim=applySplatOrientation(built.obj.userData.splat, rotX);
+      if(kind==='splat') built.info.maxDim=applySplatOrientation(built.obj.userData.splat, rotX);
       else {built.obj.userData.rotX=rotX; built.info.maxDim=fitGLB(built.obj);}
     }
-    const opts=Object.assign({id}, restoreOpts||{}, {url:url||null, rotX, readonly:!!arguments[0].readonly});
-    addEntry(name, built.obj, source, built.info, opts);
+    const e=addEntry(name, source, kind, {
+      url:url||null, ext, rotX, id, obj:built.obj, info:built.info,
+      acc:restoreOpts&&restoreOpts.acc, date:restoreOpts&&restoreOpts.date,
+      note:(restoreOpts&&restoreOpts.note)||'', readonly:!!readonly});
+    setVariant(e, kind);
+    if(current!==e) show(e, e.card);
     if(persist && store){
-      const e=entries[entries.length-1];
-      const meta={name, source, date:e.date, acc:e.acc, ext, kind};
+      const meta={name, source, date:e.date, acc:e.acc, ext, kind, rotX};
       if(url){
         meta.url=url;
         store.save(id, meta, null)
@@ -824,6 +897,7 @@ document.getElementById('tgAR').onclick=async()=>{
   if(!current) return;
   if(current.kind!=='glb'){
     if(current.variants && current.variants.glb){
+      if(!await ensureLoaded(current,'glb')) return;
       setVariant(current,'glb');
       say('MESH版に切り替えてARを起動します');
     } else {
@@ -968,12 +1042,12 @@ function defaultSpecimen(){
   const pg=new THREE.BufferGeometry();
   pg.setAttribute('position', new THREE.BufferAttribute(pos,3));
   grp.add(new THREE.Points(pg, new THREE.PointsMaterial({color:0xff3ea5,size:0.012,transparent:true,opacity:0.7})));
-  addEntry('UNTITLED DRESS / PROCEDURAL', grp, 'DEMO', {
-    kind:'glb', maxDim:1.6,
+  const info={kind:'glb', maxDim:1.6,
     statLabel:'△ 1,920',
     hud1:'三角面 <b>1,920</b>',
-    hud2:'プロシージャル生成'
-  });
+    hud2:'プロシージャル生成'};
+  const e=addEntry('UNTITLED DRESS / PROCEDURAL', 'DEMO', 'glb', {obj:grp, info});
+  setVariant(e,'glb');
 }
 
 /* ================= loop / resize ================= */
@@ -1004,9 +1078,7 @@ renderer.setAnimationLoop(()=>{
 
 /* ================= init ================= */
 (async function init(){
-  let shown=0;
   const pubUrls=new Set();
-  // URLに ?reset を付けて開くと、この端末の個人収蔵だけを全消去(公開分は消えない)
   if(store && new URLSearchParams(location.search).has('reset')){
     try{
       const saved=await store.all();
@@ -1014,44 +1086,36 @@ renderer.setAnimationLoop(()=>{
       say('この端末の個人収蔵('+saved.length+'点)を消去しました');
     }catch(e){}
   }
-  // 公開コレクション(collection.jsonがあれば全訪問者に表示)
+  // 公開コレクション: カードだけ先に作り、モデルはタップ時に読み込む
   try{
     const r=await fetch('collection.json',{cache:'no-store'});
     if(r.ok){
       const list=await r.json();
       for(const item of list){
-        try{
-          await loadAny({url:item.url, name:item.name, source:'COLLECTION',
-            ext:extOf(item.url), persist:false, readonly:true,
-            restoreOpts:{acc:item.acc, date:item.date, note:item.note||'', rotX:item.rotX||0}});
-          pubUrls.add(item.url);
-          shown++;
-        }catch(e){
-          say('コレクション読込失敗: '+item.name, true);
-        }
+        const ext=extOf(item.url);
+        addEntry(item.name, 'COLLECTION', kindOf(ext), {
+          url:item.url, ext, rotX:item.rotX||0, acc:item.acc,
+          date:item.date, note:item.note||'', readonly:true});
+        pubUrls.add(item.url);
       }
     }
   }catch(e){}
-  // 個人収蔵(このブラウザのみ)
+  // 個人収蔵(この端末のみ)
   if(!READ_ONLY && store){
     try{
       const saved=await store.all();
       saved.sort((a,b)=>(a.meta.acc||'').localeCompare(b.meta.acc||''));
       for(const s of saved){
         if(s.meta.url && pubUrls.has(s.meta.url)) continue;
-        try{
-          const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
-          await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
-            ext, persist:false,
-            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||'', rotX:s.meta.rotX||0}});
-          shown++;
-        }catch(e){
-          say('復元失敗: '+s.meta.name, true);
-        }
+        const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
+        addEntry(s.meta.name, s.meta.source, kindOf(ext), {
+          url:s.meta.url||null, ext, rotX:s.meta.rotX||0, id:s.id,
+          buf:s.buf||null, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||''});
       }
     }catch(e){}
   }
-  if(shown===0) defaultSpecimen();
+  if(entries.length) openEntry(entries[0]);
+  else defaultSpecimen();
 })();
 </script>
 </body>
