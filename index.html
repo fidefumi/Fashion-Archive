@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.17]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.21]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -150,7 +150,9 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
   <button class="tg on" id="tgRot">AUTO-ROTATE</button>
   <button class="tg on" id="tgGlitch">GLITCH</button>
   <button class="tg on" id="tgGrid">GRID</button>
-  <button class="tg" id="tgFlip">FLIP</button>
+  <button class="tg on" id="tgSide">2-SIDED</button>
+  <button class="tg" id="tgAxis">AXIS 90°</button>
+  <button class="tg" id="tgPlay" style="display:none">▶ PLAY</button>
   <button class="tg" id="tgAR" style="color:var(--magenta);border-color:var(--magenta)">AR</button>
 </div>
 
@@ -262,11 +264,12 @@ const store=(()=>{
         }catch(e){return [];}
       },
       async remove(id){try{await window.storage.delete('entry-'+id);}catch(e){}},
-      async setNote(id, note){
+      async setNote(id, note){ return this.patchMeta(id,{note}); },
+      async patchMeta(id, patch){
         const r=await window.storage.get('entry-'+id);
         if(!r) return;
         const d=JSON.parse(r.value);
-        d.meta.note=note;
+        Object.assign(d.meta, patch);
         await window.storage.set('entry-'+id, JSON.stringify(d));
       }
     };
@@ -299,12 +302,13 @@ const store=(()=>{
         });
       },
       async remove(id){await tx('readwrite',s=>s.delete(id));},
-      async setNote(id, note){
+      async setNote(id, note){ return this.patchMeta(id,{note}); },
+      async patchMeta(id, patch){
         const d=await db();
         return new Promise((res,rej)=>{
           const t=d.transaction('e','readwrite'), s=t.objectStore('e');
           const g=s.get(id);
-          g.onsuccess=()=>{const v=g.result; if(v){v.meta.note=note; s.put(v,id);}};
+          g.onsuccess=()=>{const v=g.result; if(v){Object.assign(v.meta,patch); s.put(v,id);}};
           t.oncomplete=()=>res(); t.onerror=()=>rej(t.error);
         });
       }
@@ -339,6 +343,7 @@ function setVariant(e, kind, refit){
     applyWire();
     document.getElementById('hLine1').innerHTML=v.info.hud1;
     document.getElementById('hLine2').innerHTML=v.info.hud2;
+    refreshPlayBtn();
     if(refit) show(e, e.card);
   }
 }
@@ -367,7 +372,7 @@ function addEntry(name, obj, source, info, opts){
   const key=normName(name);
   const existing=entries.find(x=>x.key===key);
   if(existing){
-    existing.variants[info.kind]={obj, info, url:opts.url||null};
+    existing.variants[info.kind]={obj, info, url:opts.url||null, id:opts.id||null, rotX:opts.rotX||0};
     if(opts.id) existing.recIds.push(opts.id);
     setVariant(existing, info.kind);
     if(current!==existing) show(existing, existing.card);
@@ -385,7 +390,7 @@ function addEntry(name, obj, source, info, opts){
     note:opts.note||'', readonly:!!opts.readonly,
     variants:{}, active:info.kind, recIds:opts.id?[opts.id]:[],
     obj, info, maxDim:info.maxDim, kind:info.kind, url:opts.url||null};
-  e.variants[info.kind]={obj, info, url:opts.url||null};
+  e.variants[info.kind]={obj, info, url:opts.url||null, id:opts.id||null, rotX:opts.rotX||0};
   e.id=opts.id||null;
   entries.push(e);
 
@@ -451,6 +456,7 @@ function show(e,card){
   document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
   card.classList.add('active');
   const narrow=innerWidth/innerHeight<0.75;
+  grid.scale.setScalar(Math.max(0.02, e.maxDim/5));
   const cy=e.maxDim*(narrow?0.55:0.45);
   controls.target.set(0, cy, 0);
   const d=e.maxDim*(narrow?2.9:2.1);
@@ -459,12 +465,20 @@ function show(e,card){
   camera.position.copy(controls.target).addScaledVector(dir, d);
   document.getElementById('hLine1').innerHTML=e.info.hud1;
   document.getElementById('hLine2').innerHTML=e.info.hud2;
+  const act0=e.obj.userData.action;
+  if(act0 && !act0.isRunning()){act0.reset(); act0.play();}
+  refreshPlayBtn();
   brandGlitch();
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 /* ================= builders ================= */
-function normalizeAndMeasure(obj){
+/* GLBを現在の軸補正で再配置し、最大寸法を返す */
+function fitGLB(grp){
+  const obj=grp.userData.inner;
+  obj.rotation.set(grp.userData.rotX||0,0,0);
+  obj.position.set(0,0,0);
+  obj.updateMatrixWorld(true);
   const box=new THREE.Box3().setFromObject(obj);
   const size=box.getSize(new THREE.Vector3());
   const c=box.getCenter(new THREE.Vector3());
@@ -477,8 +491,14 @@ async function buildGLB(buf){
   const gltf=await new Promise((res,rej)=>gltfLoader.parse(buf,'',res,rej));
   const obj=gltf.scene;
   const grp=new THREE.Group(); grp.add(obj);
-  const maxDim=normalizeAndMeasure(obj);
-  // 中身をグループ直下で正規化したので、グループ座標はそのまま
+  grp.userData.inner=obj; grp.userData.rotX=0;
+  if(gltf.animations && gltf.animations.length){
+    const mixer=new THREE.AnimationMixer(obj);
+    grp.userData.mixer=mixer;
+    grp.userData.clips=gltf.animations;
+    grp.userData.action=mixer.clipAction(gltf.animations[0]);
+  }
+  const maxDim=fitGLB(grp);
   let tri=0,vtx=0; const mats=new Set();
   obj.traverse(m=>{
     if(m.isMesh){
@@ -489,11 +509,12 @@ async function buildGLB(buf){
     }
   });
   tri=Math.round(tri);
+  const anim=grp.userData.clips?grp.userData.clips.length:0;
   return {obj:grp, info:{
-    kind:'glb', maxDim,
-    statLabel:'△ '+tri.toLocaleString(),
+    kind:'glb', maxDim, anim,
+    statLabel:'△ '+tri.toLocaleString()+(anim?' / ▶'+anim:''),
     hud1:'三角面 <b>'+tri.toLocaleString()+'</b> / 頂点 <b>'+vtx.toLocaleString()+'</b>',
-    hud2:'マテリアル <b>'+mats.size+'</b>'
+    hud2:'マテリアル <b>'+mats.size+'</b>'+(anim?' / アニメーション <b>'+anim+'</b>':'')
   }};
 }
 
@@ -596,23 +617,15 @@ async function buildSplat(url, buf){
   splat.forEachSplat((i,center)=>{
     if(i%step===0){xs.push(center.x);ys.push(center.y);zs.push(center.z);}
   });
-  const med=a=>{const b=[...a].sort((p,q)=>p-q);return b[Math.floor(b.length/2)]||0;};
-  const mx=med(xs),my=med(ys),mz=med(zs);
-  const ds=xs.map((x,i)=>Math.hypot(x-mx,ys[i]-my,zs[i]-mz)).sort((p,q)=>p-q);
-  const r=ds[Math.floor(ds.length*0.9)]||1;
-  // 高さ方向の実質的な端(浮遊ゴミを除くため2%/98%点)
-  const dys=ys.map(y=>y-my).sort((p,q)=>p-q);
-  const lo=dys[Math.floor(dys.length*0.02)]||0;
-  const hi=dys[Math.floor(dys.length*0.98)]||0;
-  splat.userData.med={mx,my,mz,lo,hi};
+  splat.userData.samples={xs,ys,zs};
   const grp=new THREE.Group();
   grp.add(splat);
   grp.userData.splat=splat;
   splat.userData.grp=grp;
   // 旧形式(Sparkに委譲した経路)はY-downで書き出されがちなので初期反転、v4はそのまま
-  applySplatOrientation(splat, !isV4);
+  const r=applySplatOrientation(splat, isV4?0:Math.PI);
   return {obj:grp, info:{
-    kind:'splat', maxDim:r*2,
+    kind:'splat', maxDim:r,
     statLabel:'✳ '+n.toLocaleString()+' splats',
     hud1:'スプラット数 <b>'+n.toLocaleString()+'</b>',
     hud2:'形式 <b>3D Gaussian Splatting</b>'
@@ -647,7 +660,12 @@ async function loadAny({buf, url, name, source, ext, persist, restoreOpts}){
       built=await buildSplat(url, buf);
     }
     const id=restoreOpts?restoreOpts.id:(Date.now()+'-'+Math.random().toString(36).slice(2,7));
-    const opts=Object.assign({id}, restoreOpts||{}, {url:url||null, readonly:!!arguments[0].readonly});
+    const rotX=(restoreOpts&&restoreOpts.rotX)||0;
+    if(rotX){
+      if(built.info.kind==='splat') built.info.maxDim=applySplatOrientation(built.obj.userData.splat, rotX);
+      else {built.obj.userData.rotX=rotX; built.info.maxDim=fitGLB(built.obj);}
+    }
+    const opts=Object.assign({id}, restoreOpts||{}, {url:url||null, rotX, readonly:!!arguments[0].readonly});
     addEntry(name, built.obj, source, built.info, opts);
     if(persist && store){
       const e=entries[entries.length-1];
@@ -712,7 +730,7 @@ document.getElementById('expBtn').onclick=()=>{
   for(const e of entries){
     for(const k in e.variants){
       const v=e.variants[k];
-      if(v.url) pub.push({name:e.name, url:v.url, acc:e.acc, note:e.note||'', date:e.date});
+      if(v.url) pub.push({name:e.name, url:v.url, acc:e.acc, note:e.note||'', date:e.date, rotX:v.rotX||0});
       else if(e.source!=='DEMO') skipped++;
     }
   }
@@ -728,36 +746,77 @@ document.getElementById('expBtn').onclick=()=>{
 };
 
 /* ================= toggles / glitch ================= */
-const state={wire:false, rot:true, glitch:true, grid:true};
+const state={wire:false, rot:true, glitch:true, grid:true, dbl:true};
 function bindTg(id,key,fn){
   const b=document.getElementById(id);
   b.onclick=()=>{state[key]=!state[key]; b.classList.toggle('on',state[key]); if(fn)fn();};
 }
 bindTg('tgWire','wire',applyWire);
+bindTg('tgSide','dbl',applyWire);
 bindTg('tgRot','rot',()=>controls.autoRotate=state.rot);
 bindTg('tgGlitch','glitch');
 bindTg('tgGrid','grid',()=>grid.visible=state.grid);
-/* スプラットの上下向き・中心・接地をセットで適用 */
-function applySplatOrientation(splat, flipped){
-  const m=splat.userData.med||{mx:0,my:0,mz:0,lo:0,hi:0};
-  splat.userData.flipped=flipped;
-  if(flipped){
-    splat.rotation.x=Math.PI;
-    splat.position.set(-m.mx, m.my, m.mz);
-  } else {
-    splat.rotation.x=0;
-    splat.position.set(-m.mx, -m.my, -m.mz);
+/* スプラットの軸補正・中心・接地をまとめて適用し、最大寸法を返す */
+function applySplatOrientation(splat, rotX){
+  const s=splat.userData.samples||{xs:[0],ys:[0],zs:[0]};
+  const c=Math.cos(rotX), sn=Math.sin(rotX);
+  const X=s.xs, Y=[], Z=[];
+  for(let i=0;i<X.length;i++){
+    Y.push(s.ys[i]*c - s.zs[i]*sn);
+    Z.push(s.ys[i]*sn + s.zs[i]*c);
   }
-  // 下端(浮遊ゴミ除外済み)がグリッド面(y=0)に接するよう持ち上げる
+  const med=a=>{const b=[...a].sort((p,q)=>p-q);return b[Math.floor(b.length/2)]||0;};
+  const cx=med(X), cy=med(Y), cz=med(Z);
+  splat.rotation.x=rotX;
+  splat.position.set(-cx,-cy,-cz);
+  // 浮遊ゴミを除いた実質的な上下端(2%/98%点)
+  const dys=Y.map(y=>y-cy).sort((p,q)=>p-q);
+  const lo=dys[Math.floor(dys.length*0.02)]||0;
+  const hi=dys[Math.floor(dys.length*0.98)]||0;
   const grp=splat.userData.grp;
-  if(grp) grp.position.y = flipped ? (m.hi||0) : -(m.lo||0);
+  if(grp) grp.position.y=-lo;
+  splat.userData.rotX=rotX;
+  return Math.max(hi-lo, 0.01);
 }
 
-document.getElementById('tgFlip').onclick=()=>{
+/* 軸補正: 90度ずつ回して正しい向きに直す(設定は保存される) */
+function setRotX(e, rotX){
+  const v=e.variants[e.active];
+  if(!v) return;
+  rotX=((rotX%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+  v.rotX=rotX;
+  let maxDim;
+  if(e.active==='splat') maxDim=applySplatOrientation(v.obj.userData.splat, rotX);
+  else {v.obj.userData.rotX=rotX; maxDim=fitGLB(v.obj);}
+  v.info.maxDim=maxDim;
+  e.maxDim=maxDim;
+  if(v.id && store && store.patchMeta) store.patchMeta(v.id,{rotX});
+  show(e, e.card);
+}
+
+document.getElementById('tgAxis').onclick=()=>{
   if(!current) return;
-  const s=current.obj.userData.splat;
-  if(s){applySplatOrientation(s, !s.userData.flipped);}
-  else current.obj.rotation.x = current.obj.rotation.x===0 ? Math.PI : 0;
+  const v=current.variants[current.active];
+  setRotX(current, (v.rotX||0)+Math.PI/2);
+};
+
+/* アニメーション再生 */
+const playBtn=document.getElementById('tgPlay');
+function refreshPlayBtn(){
+  const act=current&&current.obj&&current.obj.userData.action;
+  playBtn.style.display=act?'':'none';
+  if(act){
+    const on=act.isRunning()&&!act.paused;
+    playBtn.classList.toggle('on',on);
+    playBtn.textContent=on?'❚❚ PAUSE':'▶ PLAY';
+  }
+}
+playBtn.onclick=()=>{
+  const act=current&&current.obj&&current.obj.userData.action;
+  if(!act) return;
+  if(!act.isRunning()){act.reset(); act.play();}
+  else act.paused=!act.paused;
+  refreshPlayBtn();
 };
 
 document.getElementById('tgAR').onclick=async()=>{
@@ -806,7 +865,14 @@ document.getElementById('tgAR').onclick=async()=>{
 function applyWire(){
   if(!current) return;
   current.obj.traverse(m=>{
-    if(m.isMesh && m.material && m.material.wireframe!==undefined) m.material.wireframe=state.wire;
+    if(!m.isMesh || !m.material) return;
+    const mats=Array.isArray(m.material)?m.material:[m.material];
+    for(const mt of mats){
+      if(mt.wireframe!==undefined) mt.wireframe=state.wire;
+      if(mt.userData.origSide===undefined) mt.userData.origSide=mt.side;
+      const want=state.dbl?THREE.DoubleSide:mt.userData.origSide;
+      if(mt.side!==want){mt.side=want; mt.needsUpdate=true;}
+    }
   });
 }
 
@@ -899,7 +965,11 @@ document.addEventListener('gesturestart', e=>e.preventDefault());
 document.addEventListener('touchmove', e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
 resize();
 
+const animClock=new THREE.Clock();
 renderer.setAnimationLoop(()=>{
+  const dt=animClock.getDelta();
+  const mx=current&&current.obj&&current.obj.userData.mixer;
+  if(mx) mx.update(dt);
   controls.update();
   renderer.render(scene, camera);
 });
@@ -917,7 +987,7 @@ renderer.setAnimationLoop(()=>{
         try{
           await loadAny({url:item.url, name:item.name, source:'COLLECTION',
             ext:extOf(item.url), persist:false, readonly:true,
-            restoreOpts:{acc:item.acc, date:item.date, note:item.note||''}});
+            restoreOpts:{acc:item.acc, date:item.date, note:item.note||'', rotX:item.rotX||0}});
           pubUrls.add(item.url);
           shown++;
         }catch(e){
@@ -937,7 +1007,7 @@ renderer.setAnimationLoop(()=>{
           const ext=s.meta.ext||extOf(s.meta.url||'')||'glb';
           await loadAny({buf:s.buf, url:s.meta.url, name:s.meta.name, source:s.meta.source,
             ext, persist:false,
-            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||''}});
+            restoreOpts:{id:s.id, acc:s.meta.acc, date:s.meta.date, note:s.meta.note||'', rotX:s.meta.rotX||0}});
           shown++;
         }catch(e){
           say('復元失敗: '+s.meta.name, true);
