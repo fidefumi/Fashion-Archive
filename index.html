@@ -130,7 +130,7 @@ aside h2{font-size:9px;letter-spacing:.3em;color:var(--dim);font-weight:400;padd
 
 <header>
   <div class="brand" id="brand" data-t="FASHION//ARCHIVE">FASHION<em>//</em>ARCHIVE
-    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.21]</span></small>
+    <small>DIGITAL GARMENT SPECIMENS — 衣服を、未来へ残す <span style="color:var(--cyan)">[REV.22]</span></small>
   </div>
   <div class="loadbar">
     <input type="url" id="urlIn" placeholder="https://…/model.glb / scan.spz / scan.ply">
@@ -328,7 +328,7 @@ function kindOf(ext){return SPLAT_EXTS.includes(ext)?'splat':'glb';}
 
 function normName(s){return String(s).toLowerCase().replace(/[\s_]+/g,' ').trim();}
 
-function setVariant(e, kind, refit){
+function setVariant(e, kind){
   const v=e.variants[kind];
   if(!v) return;
   const wasCurrent=(current===e);
@@ -339,12 +339,8 @@ function setVariant(e, kind, refit){
   const stat=e.card&&e.card.querySelector('.stat');
   if(stat) stat.textContent=v.info.statLabel;
   if(wasCurrent){
-    scene.add(e.obj);
-    applyWire();
-    document.getElementById('hLine1').innerHTML=v.info.hud1;
-    document.getElementById('hLine2').innerHTML=v.info.hud2;
-    refreshPlayBtn();
-    if(refit) show(e, e.card);
+    current=null;          // 新オブジェクトはまだシーン外
+    show(e, e.card);       // 視線方向は保ったまま距離とグリッドを再調整
   }
 }
 
@@ -359,8 +355,8 @@ function updateChips(e){
     c.textContent=k==='glb'?'MESH':'3DGS';
     c.addEventListener('click',ev=>{
       ev.stopPropagation();
-      if(current!==e){setVariant(e,k); show(e,e.card);}
-      else setVariant(e,k); // 同一視点のまま切替(比較しやすい)
+      setVariant(e,k);
+      if(current!==e) show(e,e.card);
     });
     box.appendChild(c);
   }
@@ -474,6 +470,11 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 
 /* ================= builders ================= */
 /* GLBを現在の軸補正で再配置し、最大寸法を返す */
+/* 最大寸法を人が読める形に(1未満はm、大きい値はcm相当とみなす) */
+function fmtH(v){
+  return v<10 ? v.toFixed(2)+' m' : v.toFixed(0)+' (cm?)';
+}
+
 function fitGLB(grp){
   const obj=grp.userData.inner;
   obj.rotation.set(grp.userData.rotX||0,0,0);
@@ -514,7 +515,7 @@ async function buildGLB(buf){
     kind:'glb', maxDim, anim,
     statLabel:'△ '+tri.toLocaleString()+(anim?' / ▶'+anim:''),
     hud1:'三角面 <b>'+tri.toLocaleString()+'</b> / 頂点 <b>'+vtx.toLocaleString()+'</b>',
-    hud2:'マテリアル <b>'+mats.size+'</b>'+(anim?' / アニメーション <b>'+anim+'</b>':'')
+    hud2:'マテリアル <b>'+mats.size+'</b> / 高さ <b>'+fmtH(maxDim)+'</b>'+(anim?' / アニメ <b>'+anim+'</b>':'')
   }};
 }
 
@@ -628,7 +629,7 @@ async function buildSplat(url, buf){
     kind:'splat', maxDim:r,
     statLabel:'✳ '+n.toLocaleString()+' splats',
     hud1:'スプラット数 <b>'+n.toLocaleString()+'</b>',
-    hud2:'形式 <b>3D Gaussian Splatting</b>'
+    hud2:'形式 <b>3DGS</b> / 高さ <b>'+fmtH(r)+'</b>'
   }};
 }
 
